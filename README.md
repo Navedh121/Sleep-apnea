@@ -117,7 +117,7 @@ python replay_live.py night_apnea.csv --speed 60 --session-id 4
 | B3    | ✅ Done | Night summary, ODI, read endpoints |
 | C     | ✅ Done | Mock integration test (apnea/normal/short end-to-end) |
 | D     | ✅ Done | 4-page HTML frontend + LLM chat |
-| E     | ⏳ Next | scikit-learn random forest, sensitivity/specificity |
+| E     | ✅ Done | scikit-learn random forest, sensitivity/specificity |
 
 ---
 

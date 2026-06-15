@@ -296,9 +296,15 @@
       document.getElementById('rf-placeholder').style.display = 'none';
       document.getElementById('rf-result').style.display      = 'block';
 
-      // RF band uses the same ODI cutoffs as the firmware band
-      const rfBand = v.band;   // server already computes this; just display it
-      const { color: rc, label: rl } = chipHtml(rfBand);
+      // Compute the RF band from rf_index using the §5 cutoffs.
+      // rf_index is an independent estimate and may differ from v.band (the ODI band).
+      function rfBandFromIndex(idx) {
+        if (idx < 5)  return 'normal';
+        if (idx < 15) return 'mild';
+        if (idx < 30) return 'moderate';
+        return 'severe';
+      }
+      const { color: rc, label: rl } = chipHtml(rfBandFromIndex(v.rf_index));
       const rfChip = document.getElementById('rf-chip');
       rfChip.textContent      = rl;
       rfChip.style.background = rc;

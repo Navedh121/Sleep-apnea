@@ -42,6 +42,7 @@ from backend.models import (
 )
 from backend.summary import compute_summary
 from backend.llm import ask_llm
+from backend.ml import predict_night
 
 # ---------------------------------------------------------------------------
 # Static frontend files served at /app
@@ -63,11 +64,31 @@ app = FastAPI(
 # Key = session_id, Value = list of the last A1_LIVE_BUFFER_SIZE t values.
 _live_t_buffer: dict[int, list[int]] = defaultdict(list)
 
+# Loaded RF model — None if model/rf_model.pkl does not exist yet (Phase E).
+# Set by on_startup(); read by get_verdict().
+_RF_MODEL = None
+
 
 @app.on_event("startup")
 def on_startup() -> None:
     """Create tables on first run (safe to call every time)."""
+    global _RF_MODEL
+
     init_db()
+
+    # Try to load the trained RF model (Phase E).
+    # The server works without it — verdict returns rf_index=null until trained.
+    _MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "model", "rf_model.pkl")
+    if os.path.exists(_MODEL_PATH):
+        try:
+            import joblib
+            _RF_MODEL = joblib.load(_MODEL_PATH)
+            print(f"RF model loaded from {_MODEL_PATH}")
+        except Exception as exc:
+            print(f"WARNING: could not load RF model ({exc}) — rf_index will be null")
+    else:
+        print("RF model not found — run 'python train_rf.py' to enable ML verdict")
+
     # Mount the frontend folder after startup so StaticFiles finds the directory.
     # (Mounting before startup raises an error if the folder doesn't exist yet.)
     if os.path.isdir(_FRONTEND_DIR):
@@ -469,7 +490,11 @@ def get_verdict(session_id: int):
 
     The 'band' comes from the ODI calculation (computed in /summary).
     'rf_index' and 'rf_confidence' come from the random forest (Phase E);
-    they are null until the model is trained and loaded.
+    they are null until train_rf.py has been run and the server restarted.
+
+    If the RF model is loaded and this session doesn't yet have a cached
+    rf_index, predict_night() is called here and the result is written to
+    the DB so repeat requests are instant.
     """
     conn = get_connection()
     try:
@@ -486,13 +511,27 @@ def get_verdict(session_id: int):
 
         band = row["band"]
 
-        # If the band is still 'uploaded' (summary not yet computed), compute it now
+        # If the band is still 'uploaded' or 'pending', compute the ODI summary first
         if band in ("uploaded", "pending"):
-            summary = compute_summary(session_id, conn)
-            band        = summary["band"]
+            summary      = compute_summary(session_id, conn)
+            band         = summary["band"]
             insufficient = summary["insufficient"]
         else:
             insufficient = bool(row["insufficient"])
+
+        # RF second-opinion: run if model is loaded, session has enough data,
+        # and we don't already have a cached result in the DB
+        rf_index      = row["rf_index"]
+        rf_confidence = row["rf_confidence"]
+
+        if (
+            _RF_MODEL is not None
+            and not insufficient
+            and rf_index is None         # not yet cached
+        ):
+            rf_result     = predict_night(session_id, conn, _RF_MODEL)
+            rf_index      = rf_result["rf_index"]
+            rf_confidence = rf_result["rf_confidence"]
 
     finally:
         conn.close()
@@ -500,8 +539,8 @@ def get_verdict(session_id: int):
     return {
         "band":          band,
         "insufficient":  insufficient,
-        "rf_index":      row["rf_index"],       # None until Phase E
-        "rf_confidence": row["rf_confidence"],  # None until Phase E
+        "rf_index":      rf_index,
+        "rf_confidence": rf_confidence,
     }
 
 

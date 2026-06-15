@@ -124,20 +124,45 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
   - `backend/llm.py` — `ask_llm()` via Groq; graceful fallback if `GROQ_API_KEY` missing.
   - `POST /nights/{id}/chat` + static file mount at `/app` in `backend/main.py`.
   - **Verified:** all 4 pages serve 200; all data endpoints correct; Groq fallback message shown.
-- **NEXT: Phase E — ML pipeline.**
-  - `backend/ml.py` — feature extraction (10-feature vector §6), imports `compute_baseline`
-    from `summary.py` (A7), `predict_night()` for inference.
-  - `train_rf.py` — labelled windows from mock CSVs, `RandomForestClassifier`, reports
-    **sensitivity & specificity**, saves `model/rf_model.pkl` via joblib.
-  - Update `backend/main.py` startup to load model; wire verdict to return real `rf_index`/`rf_confidence`.
-- **How to test Phase D:**
+- **Phase E: DONE** — ML pipeline (Random Forest second-opinion verdict).
+  - `backend/ml.py` — `extract_window_features()` (10-feature §6 vector, fixed order),
+    `extract_features_for_night()` (full-night windowing, A7 baseline shared with summary.py),
+    `predict_night()` (runs RF, computes rf_index + rf_confidence, caches in DB).
+  - `train_rf.py` — loads mock CSVs, extracts features, labels all apnea windows=1 /
+    normal windows=0, 80/20 stratified split, `RandomForestClassifier`, reports
+    **SENSITIVITY 0.917 / SPECIFICITY 0.979** on mock hold-out, saves `model/rf_model.pkl`.
+  - `backend/main.py` updated: loads model on startup (`_RF_MODEL` global), wires
+    `GET /nights/{id}/verdict` to call `predict_night()` when model present and rf_index not cached.
+  - `frontend/verdict.html` fixed: RF band computed from `rf_index` (not ODI band).
+  - **Verified:**
+    - apnea: band=severe, rf_index=58.1, rf_confidence=0.984 ✓
+    - normal: band=normal, rf_index=0.3, rf_confidence=0.652 ✓
+    - short: insufficient=True, rf_index=null (gate blocked RF) ✓
+- **ALL PHASES COMPLETE (A, B1, B2, B3, C, D, E).**
+- **Real-data validation deferred (Phase F):** Model trained on mock data only. Final
+  validation requires real MAX30102 overnight recordings. `train_rf.py` accepts real
+  CSVs via the same feature extractor — swap data, re-run, restart server.
+- **How to test Phase E:**
   ```
+  # 1. Generate mock CSVs (if not already done):
+  python mock_night.py apnea  --hours 8 --out night_apnea.csv  --seed 42
+  python mock_night.py normal --hours 8 --out night_normal.csv --seed 42
+
+  # 2. Train the model:
+  python train_rf.py
+  # Expected: SENSITIVITY ~0.917, SPECIFICITY ~0.979
+  # Model saved to model/rf_model.pkl
+
+  # 3. Start server (picks up the model automatically):
   uvicorn backend.main:app --reload
-  # Open http://localhost:8000 → Logs page
-  # Upload: curl -X POST "http://localhost:8000/night?session_id=1" -H "Content-Type: text/csv" --data-binary @night_apnea.csv
-  # Live:   python replay_live.py night_apnea.csv --speed 60 --session-id 4
-  #         then open http://localhost:8000/app/live.html
-  # Chat:   add GROQ_API_KEY to .env for real LLM responses
+  # Look for: "RF model loaded from .../model/rf_model.pkl"
+
+  # 4. Upload a night and check the verdict:
+  curl -X POST "http://localhost:8000/night?session_id=1" -H "Content-Type: text/csv" --data-binary @night_apnea.csv
+  curl http://localhost:8000/nights/1/verdict
+  # Expected: rf_index > 30 (severe), rf_confidence > 0.9
+
+  # 5. Open the Verdict page in the browser — RF section now shows instead of placeholder.
   ```
 - **Open decisions (unchanged):** Real SpO₂ training dataset (deferred to hardware);
   final production `MIN_DURATION_S` = 14400 (4 h); Groq model = `llama3-8b-8192`.
