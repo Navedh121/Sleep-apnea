@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpO2 Monitor — Chat</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #222; display: flex; flex-direction: column; min-height: 100vh; }
+
+    header {
+      background: #1a2c42; color: white; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between; height: 56px; flex-shrink: 0;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 600; }
+    header .sub { font-size: 0.72rem; color: #aac4e0; margin-left: 10px; }
+    nav a { color: #aac4e0; text-decoration: none; margin-left: 20px; font-size: 0.9rem; padding: 4px 0; }
+    nav a:hover { color: white; border-bottom: 2px solid #4a9eda; }
+
+    main { max-width: 800px; width: 100%; margin: 0 auto; padding: 24px 16px; flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+    h2 { font-size: 1.3rem; color: #1a2c42; flex-shrink: 0; }
+
+    /* ── context card at top ── */
+    .context-card {
+      background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 16px 20px; flex-shrink: 0;
+    }
+    .context-card p { font-size: 0.88rem; color: #555; }
+    .context-card .chip {
+      display: inline-block; padding: 2px 10px; border-radius: 10px; color: white;
+      font-size: 0.78rem; font-weight: 700; text-transform: uppercase; margin-left: 8px; vertical-align: middle;
+    }
+
+    /* ── chat log ── */
+    #chat-log {
+      flex: 1;
+      overflow-y: auto;
+      background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1);
+      padding: 16px;
+      min-height: 300px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+
+    .bubble {
+      max-width: 82%; padding: 10px 14px; border-radius: 12px; font-size: 0.9rem; line-height: 1.5;
+    }
+    .bubble.user {
+      align-self: flex-end; background: #1a2c42; color: white; border-bottom-right-radius: 4px;
+    }
+    .bubble.assistant {
+      align-self: flex-start; background: #f0f2f5; color: #222; border-bottom-left-radius: 4px; white-space: pre-wrap;
+    }
+    .bubble.disclaimer {
+      background: #fffbf0; border-left: 3px solid #f39c12;
+      border-radius: 0 6px 6px 0; font-size: 0.8rem; color: #777;
+      align-self: flex-start; max-width: 95%;
+    }
+
+    /* ── "thinking" spinner ── */
+    .thinking {
+      align-self: flex-start; display: flex; align-items: center; gap: 8px;
+      color: #888; font-size: 0.85rem;
+    }
+    .dot-pulse { display: flex; gap: 4px; }
+    .dot-pulse span {
+      width: 7px; height: 7px; border-radius: 50%; background: #aac4e0;
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .dot-pulse span:nth-child(2) { animation-delay: .2s; }
+    .dot-pulse span:nth-child(3) { animation-delay: .4s; }
+    @keyframes pulse { 0%,80%,100% { transform: scale(0.6); opacity:.4 } 40% { transform: scale(1); opacity:1 } }
+
+    /* ── input bar ── */
+    #input-bar {
+      display: flex; gap: 10px; flex-shrink: 0;
+    }
+    #question-input {
+      flex: 1; padding: 10px 14px; border: 1px solid #ccc; border-radius: 6px;
+      font-size: 0.9rem; font-family: inherit;
+    }
+    #question-input:focus { outline: none; border-color: #4a9eda; }
+    #question-input:disabled { background: #f0f2f5; }
+
+    #send-btn {
+      padding: 10px 20px; background: #1a2c42; color: white;
+      border: none; border-radius: 6px; font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+    }
+    #send-btn:hover:not(:disabled) { background: #2a4062; }
+    #send-btn:disabled { background: #95a5a6; cursor: not-allowed; }
+
+    /* ── starter questions ── */
+    .starters { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
+    .starter-btn {
+      background: white; border: 1px solid #ccc; border-radius: 16px;
+      padding: 5px 12px; font-size: 0.82rem; cursor: pointer; color: #333;
+    }
+    .starter-btn:hover { border-color: #4a9eda; color: #1a2c42; }
+
+    .back-link { font-size: 0.85rem; color: #1a2c42; text-decoration: none; flex-shrink: 0; }
+    .back-link:hover { text-decoration: underline; }
+
+    footer { text-align: center; font-size: 0.78rem; color: #999; padding: 16px 0; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center">
+    <h1>SpO2 Sleep Monitor</h1>
+    <span class="sub">Screening tool — not a medical device</span>
+  </div>
+  <nav>
+    <a href="/app/index.html">History</a>
+    <a href="/app/live.html">Live</a>
+  </nav>
+</header>
+
+<main>
+  <a class="back-link" href="/app/index.html">← Back to History</a>
+  <h2>Sleep Health Chat — Session #<span id="session-num">…</span></h2>
+
+  <!-- Context card shows the band so the user knows which night they're asking about -->
+  <div class="context-card" id="context-card">
+    <p>Loading session summary…</p>
+  </div>
+
+  <!-- Chat messages appear here -->
+  <div id="chat-log">
+    <!-- Initial guidance bubble -->
+    <div class="bubble disclaimer">
+      Ask me anything about your sleep recording. I will explain what the data
+      shows in plain language and always remind you to consult a sleep specialist.
+    </div>
+  </div>
+
+  <!-- Starter question chips — common questions users might not think to ask -->
+  <div class="starters" id="starters">
+    <button class="starter-btn" onclick="askStarter(this)">What does my result mean?</button>
+    <button class="starter-btn" onclick="askStarter(this)">Why did my SpO2 drop?</button>
+    <button class="starter-btn" onclick="askStarter(this)">How many events did I have?</button>
+    <button class="starter-btn" onclick="askStarter(this)">Should I see a doctor?</button>
+  </div>
+
+  <!-- Text input + send button -->
+  <div id="input-bar">
+    <input
+      id="question-input"
+      type="text"
+      placeholder="Ask a question about your sleep recording…"
+      maxlength="400"
+      disabled
+    >
+    <button id="send-btn" onclick="sendQuestion()" disabled>Send</button>
+  </div>
+</main>
+
+<footer>Screening estimate only — not for clinical use. Consult a sleep specialist.</footer>
+
+<script>
+  // ── band color map (same as other pages) ────────────────────────────────
+  const BAND_COLOR = {
+    normal:      '#27ae60',
+    mild:        '#f39c12',
+    moderate:    '#e67e22',
+    severe:      '#e74c3c',
+    insufficient:'#95a5a6',
+  };
+
+  // ── read ?session_id from URL ────────────────────────────────────────────
+  const params    = new URLSearchParams(window.location.search);
+  const sessionId = params.get('session_id');
+  let   summaryData = null;   // stored so we can pass it in the POST body
+  let   isWaiting   = false;  // true while waiting for Groq
+
+  if (!sessionId) {
+    document.getElementById('context-card').innerHTML =
+      '<p style="color:#e74c3c">No session_id in URL. Go back to History and click Chat on a row.</p>';
+  } else {
+    document.getElementById('session-num').textContent = sessionId;
+    loadContext(sessionId);
+  }
+
+  async function loadContext(sid) {
+    try {
+      const resp = await fetch(`/nights/${sid}/summary`);
+      if (!resp.ok) throw new Error(`${resp.status} ${await resp.text()}`);
+      summaryData = await resp.json();
+
+      // Render context card
+      const color = BAND_COLOR[summaryData.band] || '#95a5a6';
+      document.getElementById('context-card').innerHTML = `
+        <p>
+          <strong>Recording band:</strong>
+          <span class="chip" style="background:${color}">${summaryData.band || '—'}</span>
+          &nbsp;&nbsp;|&nbsp;&nbsp;
+          <strong>ODI:</strong> ${summaryData.odi !== null ? summaryData.odi.toFixed(1) + ' events/h' : '—'}
+          &nbsp;&nbsp;|&nbsp;&nbsp;
+          <strong>Baseline SpO2:</strong> ${summaryData.spo2_baseline !== null ? summaryData.spo2_baseline.toFixed(1) + '%' : '—'}
+        </p>
+      `;
+
+      // Enable the input now that we have summary context
+      document.getElementById('question-input').disabled = false;
+      document.getElementById('send-btn').disabled       = false;
+      document.getElementById('question-input').focus();
+
+      // Also allow Enter key to send
+      document.getElementById('question-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+      });
+
+    } catch (e) {
+      document.getElementById('context-card').innerHTML =
+        `<p style="color:#e74c3c">Could not load session: ${e.message}</p>`;
+    }
+  }
+
+  // ── send a question ──────────────────────────────────────────────────────
+  async function sendQuestion() {
+    if (isWaiting) return;
+    const input    = document.getElementById('question-input');
+    const question = input.value.trim();
+    if (!question) return;
+
+    input.value = '';
+    appendBubble('user', question);
+    const spinner = appendSpinner();
+
+    isWaiting = true;
+    document.getElementById('send-btn').disabled       = true;
+    document.getElementById('question-input').disabled = true;
+
+    try {
+      const resp = await fetch(`/nights/${sessionId}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question }),
+      });
+
+      const data = await resp.json();
+      removeSpinner(spinner);
+
+      if (!resp.ok) {
+        appendBubble('assistant', `Error ${resp.status}: ${data.detail || JSON.stringify(data)}`);
+      } else {
+        appendBubble('assistant', data.answer);
+        // The LLM is instructed to end with a disclaimer sentence; we don't need
+        // to add a separate one.  But if the answer doesn't contain it (e.g. key not set)
+        // we add a small reminder.
+        if (!data.answer.toLowerCase().includes('consult a sleep specialist')) {
+          appendDisclaimer();
+        }
+      }
+    } catch (e) {
+      removeSpinner(spinner);
+      appendBubble('assistant', `Network error: ${e.message}`);
+    } finally {
+      isWaiting = false;
+      document.getElementById('send-btn').disabled       = false;
+      document.getElementById('question-input').disabled = false;
+      document.getElementById('question-input').focus();
+    }
+  }
+
+  // ── starter button ────────────────────────────────────────────────────────
+  function askStarter(btn) {
+    const input = document.getElementById('question-input');
+    input.value = btn.textContent;
+    sendQuestion();
+  }
+
+  // ── DOM helpers ───────────────────────────────────────────────────────────
+  function appendBubble(role, text) {
+    const log = document.getElementById('chat-log');
+    const div = document.createElement('div');
+    div.className = `bubble ${role}`;
+    div.textContent = text;
+    log.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function appendDisclaimer() {
+    const log = document.getElementById('chat-log');
+    const div = document.createElement('div');
+    div.className = 'bubble disclaimer';
+    div.textContent = 'This is a screening estimate only — please consult a sleep specialist for a proper diagnosis.';
+    log.appendChild(div);
+    scrollToBottom();
+  }
+
+  function appendSpinner() {
+    const log = document.getElementById('chat-log');
+    const div = document.createElement('div');
+    div.className = 'thinking';
+    div.innerHTML = `
+      <span>Thinking…</span>
+      <div class="dot-pulse">
+        <span></span><span></span><span></span>
+      </div>
+    `;
+    log.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function removeSpinner(el) {
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function scrollToBottom() {
+    const log = document.getElementById('chat-log');
+    log.scrollTop = log.scrollHeight;
+  }
+</script>
+
+</body>
+</html>

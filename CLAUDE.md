@@ -114,14 +114,30 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
   - `requirements.txt`, `.gitignore`, `.env.example`, `README.md` added.
   - **Verified:** live sample → 200; CSV upload 28800 rows → 200; duplicate → 409;
     bad flag → 400; wrong header → 400. DB contains correct rows.
-- **NEXT: Phase D — 4-page HTML frontend + LLM chat.**
-- **How to test the current state:**
+- **Phase D: DONE** — 4-page HTML frontend + LLM chat.
+  - `frontend/index.html` — Logs/history table, colour-coded band chips, Verdict/Chat buttons.
+  - `frontend/live.html` — Live Chart.js graph (dual y-axis SpO₂/HR), polls `/live/active`
+    and `/live/recent?since_t=` every 1 s; auto-transitions from idle when session starts.
+  - `frontend/verdict.html` — Screening band chip + colour scale, summary stats grid,
+    per-hour breakdown table, RF placeholder ("run train_rf.py") until Phase E.
+  - `frontend/chat.html` — Scrolling chat log, starter question chips, spinner, disclaimer.
+  - `backend/llm.py` — `ask_llm()` via Groq; graceful fallback if `GROQ_API_KEY` missing.
+  - `POST /nights/{id}/chat` + static file mount at `/app` in `backend/main.py`.
+  - **Verified:** all 4 pages serve 200; all data endpoints correct; Groq fallback message shown.
+- **NEXT: Phase E — ML pipeline.**
+  - `backend/ml.py` — feature extraction (10-feature vector §6), imports `compute_baseline`
+    from `summary.py` (A7), `predict_night()` for inference.
+  - `train_rf.py` — labelled windows from mock CSVs, `RandomForestClassifier`, reports
+    **sensitivity & specificity**, saves `model/rf_model.pkl` via joblib.
+  - Update `backend/main.py` startup to load model; wire verdict to return real `rf_index`/`rf_confidence`.
+- **How to test Phase D:**
   ```
   uvicorn backend.main:app --reload
-  # In another terminal:
-  python mock_night.py apnea --hours 8 --out night_apnea.csv --seed 42
-  curl -X POST "http://localhost:8000/night?session_id=1" -H "Content-Type: text/csv" --data-binary @night_apnea.csv
-  # Expected: {"status":"ok","rows_inserted":28800}
+  # Open http://localhost:8000 → Logs page
+  # Upload: curl -X POST "http://localhost:8000/night?session_id=1" -H "Content-Type: text/csv" --data-binary @night_apnea.csv
+  # Live:   python replay_live.py night_apnea.csv --speed 60 --session-id 4
+  #         then open http://localhost:8000/app/live.html
+  # Chat:   add GROQ_API_KEY to .env for real LLM responses
   ```
-- **Open decisions (confirm at build time):** SpO₂-native training dataset; Groq model
-  name; final production `MIN_DURATION_S` (≈4 h floor).
+- **Open decisions (unchanged):** Real SpO₂ training dataset (deferred to hardware);
+  final production `MIN_DURATION_S` = 14400 (4 h); Groq model = `llama3-8b-8192`.

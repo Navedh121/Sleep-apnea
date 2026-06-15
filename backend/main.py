@@ -1,5 +1,6 @@
 # main.py — FastAPI application entry point.
 #
+# Phase D: static frontend served at /app, chat endpoint added.
 # Phase B3: summary computation + all read endpoints added.
 # Phase B2: all integration guards A1–A10 enforced as hard rejections.
 #
@@ -24,9 +25,12 @@ from datetime import date
 from typing import List
 
 import json
+import os
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import (
     A1_GAP_MIN_MS, A1_GAP_MAX_MS, A1_LIVE_BUFFER_SIZE
@@ -34,9 +38,16 @@ from backend.config import (
 from backend.database import init_db, get_connection
 from backend.models import (
     LiveSample, NightRow, NightSummary, VerdictResponse,
-    SamplePoint, LiveActiveResponse,
+    SamplePoint, LiveActiveResponse, ChatRequest, ChatResponse,
 )
 from backend.summary import compute_summary
+from backend.llm import ask_llm
+
+# ---------------------------------------------------------------------------
+# Static frontend files served at /app
+# ---------------------------------------------------------------------------
+# "frontend/" is one level above this backend/ folder.
+_FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -57,7 +68,20 @@ _live_t_buffer: dict[int, list[int]] = defaultdict(list)
 def on_startup() -> None:
     """Create tables on first run (safe to call every time)."""
     init_db()
+    # Mount the frontend folder after startup so StaticFiles finds the directory.
+    # (Mounting before startup raises an error if the folder doesn't exist yet.)
+    if os.path.isdir(_FRONTEND_DIR):
+        app.mount("/app", StaticFiles(directory=_FRONTEND_DIR), name="frontend")
+        print("Frontend mounted at /app")
+    else:
+        print("WARNING: frontend/ directory not found — run Phase D to create it.")
     print("Database initialised. Server ready.")
+
+
+@app.get("/", include_in_schema=False)
+def redirect_root():
+    """Redirect the bare URL to the Logs page."""
+    return RedirectResponse(url="/app/index.html")
 
 
 # ---------------------------------------------------------------------------
@@ -539,3 +563,44 @@ def get_live_recent(
 
     return [{"t": r["t"], "spo2": r["spo2"], "hr": r["hr"], "flag": r["flag"]}
             for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# POST /nights/{id}/chat — LLM question about a night (spec §2, §9 page 4)
+# ---------------------------------------------------------------------------
+
+@app.post("/nights/{session_id}/chat", response_model=ChatResponse)
+def post_chat(session_id: int, body: ChatRequest):
+    """
+    Answer a free-text question about this night using Groq.
+
+    The night summary (§5) is passed directly in the prompt — no RAG, no vector
+    DB (spec §9).  The event_list is stripped to keep the token count low.
+
+    Each call = one Groq API request.  Only call on demand, not automatically.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT band FROM nights WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+
+        if row["band"] == "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="session is still live — upload the full night first"
+            )
+
+        # Compute the summary (or reuse cached values) to pass to the LLM
+        summary = compute_summary(session_id, conn)
+    finally:
+        conn.close()
+
+    # Drop event_list (can be 400+ items) before sending to the LLM — the
+    # hourly breakdown already captures per-hour event counts which is enough context.
+    compact_summary = {k: v for k, v in summary.items() if k != "event_list"}
+
+    answer = ask_llm(body.question, compact_summary)
+    return {"answer": answer}
