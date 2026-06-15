@@ -89,6 +89,11 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
 - **mock_night.py + replay_live.py: BUILT and VERIFIED** — apnea→severe,
   normal→normal, short→insufficient; sample spacing ~1 Hz (passes guard A1); invalid
   rows carry sentinel 0 values (guard A9).
+- **Phase C: DONE** — mock integration test 9/9 pass.
+  - `mock_upload.py`: uploads apnea/normal/short, asserts verdicts, runs live replay.
+  - `replay_live.py`: fixed to use `requests.Session()` (connection reuse, 60x faster).
+  - Results: apnea=severe (ODI 49.8), normal=normal, short=insufficient; live
+    endpoint received samples and /live/active returned session 4 during stream.
 - **Phase B3: DONE** — night summary, ODI, event detection, all read endpoints.
   - `backend/summary.py`: `compute_baseline()` (A7), `detect_events()`, `odi_band()`,
     `compute_summary()`. Duration gate inside compute_summary.
@@ -109,7 +114,7 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
   - `requirements.txt`, `.gitignore`, `.env.example`, `README.md` added.
   - **Verified:** live sample → 200; CSV upload 28800 rows → 200; duplicate → 409;
     bad flag → 400; wrong header → 400. DB contains correct rows.
-- **NEXT: Phase C — mock integration test (apnea/normal/short end-to-end + live replay).**
+- **NEXT: Phase D — 4-page HTML frontend + LLM chat.**
 - **How to test the current state:**
   ```
   uvicorn backend.main:app --reload

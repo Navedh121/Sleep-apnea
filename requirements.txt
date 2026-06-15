@@ -8,6 +8,9 @@ pydantic>=2.7.0
 # Load secrets from a .env file
 python-dotenv>=1.0.0
 
+# HTTP client (used by replay_live.py)
+requests>=2.31.0
+
 # Groq LLM client (used in Phase D)
 groq>=0.9.0
 
