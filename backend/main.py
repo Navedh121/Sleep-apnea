@@ -1,18 +1,19 @@
 # main.py — FastAPI application entry point.
 #
-# Phase B1: two ingestion endpoints only.
-#   POST /reading  — one live sample
-#   POST /night    — full CSV upload (the SD-card file)
+# Phase B2: all integration guards A1–A10 enforced as hard rejections.
 #
-# Guards enforced here in B1:
-#   A2  — flag must be "ok" or "invalid"
-#   A3  — /night body is CSV, not JSON
-#   A4  — CSV must start with header "t,spo2,hr,flag"
-#   A5  — first /reading for a new session creates a stub row in nights
-#   A6  — re-uploading a finalized night returns 409
-#
-# Guards A1 (t-unit check) is also done in B1 for /night uploads.
-# For /reading it needs a buffer; that buffer is set up here too.
+# Guard summary (spec §A):
+#   A1  — t is milliseconds: median inter-sample gap must be 500–2000 ms.
+#          Checked BEFORE any DB write (live buffer) and on full batch (/night).
+#   A2  — flag is exactly "ok" or "invalid" — no other value accepted.
+#   A3  — POST /night body is raw CSV, not JSON.
+#   A4  — CSV first line must be exactly "t,spo2,hr,flag".
+#   A5  — first /reading for a new session_id creates a stub nights row.
+#   A6  — re-uploading a finalized session returns 409.
+#   A7  — one baseline function (implemented in summary.py, Phase B3).
+#   A8  — firmware-side only; no app action.
+#   A9  — out-of-range spo2/hr re-flagged "invalid" rather than rejected.
+#   A10 — MIN_DURATION_S printed at import time (done in config.py).
 
 import csv
 import io
@@ -22,7 +23,6 @@ from datetime import date
 from typing import List
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from backend.config import (
     A1_GAP_MIN_MS, A1_GAP_MAX_MS, A1_LIVE_BUFFER_SIZE
@@ -37,11 +37,11 @@ from backend.models import LiveSample
 app = FastAPI(
     title="SpO2 Sleep-Apnea Screening Monitor",
     description="Laptop backend for the ESP32 SpO2 sensor (spec v1.1)",
-    version="0.1.0-B1",
+    version="0.1.0-B2",
 )
 
-# In-memory buffer: stores the last N t-values per session for A1 live check.
-# Key = session_id (int), Value = list of recent t values.
+# In-memory buffer for A1 live-stream check.
+# Key = session_id, Value = list of the last A1_LIVE_BUFFER_SIZE t values.
 _live_t_buffer: dict[int, list[int]] = defaultdict(list)
 
 
@@ -53,13 +53,13 @@ def on_startup() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helper: A2 flag validation
+# Guard helpers
 # ---------------------------------------------------------------------------
 
 def _validate_flag(flag: str, context: str = "") -> None:
     """
-    Guard A2: reject any flag value that isn't exactly "ok" or "invalid".
-    context is a human-readable hint (e.g. "row t=1000") for error messages.
+    Guard A2: reject any value that isn't exactly "ok" or "invalid".
+    'context' is shown in the error (e.g. "row t=1000") to help debugging.
     """
     if flag not in ("ok", "invalid"):
         where = f" (at {context})" if context else ""
@@ -69,30 +69,24 @@ def _validate_flag(flag: str, context: str = "") -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Helper: A1 gap check on a list of t values
-# ---------------------------------------------------------------------------
-
 def _check_t_units(t_values: list[int]) -> None:
     """
-    Guard A1: compute the median gap between consecutive t values.
-    If it falls outside 500–2000 ms the firmware is probably sending seconds
-    or a sample counter instead of milliseconds.
-    Needs at least 2 values to compute a gap.
+    Guard A1: verify the median gap between consecutive t values is ~1 Hz.
+    Expected range: 500–2000 ms.  Outside this → firmware is almost certainly
+    sending seconds or a sample counter rather than milliseconds.
+
+    Requires at least 2 values; silently skips if fewer.
     """
     if len(t_values) < 2:
-        return   # not enough data yet
-
-    # Sort first — just in case samples arrived slightly out of order
-    sorted_t = sorted(t_values)
-    gaps = [sorted_t[i + 1] - sorted_t[i] for i in range(len(sorted_t) - 1)]
-
-    # Filter out zero gaps (duplicate t values) before computing median
-    non_zero_gaps = [g for g in gaps if g > 0]
-    if not non_zero_gaps:
         return
 
-    median_gap = statistics.median(non_zero_gaps)
+    sorted_t = sorted(t_values)
+    gaps = [sorted_t[i + 1] - sorted_t[i] for i in range(len(sorted_t) - 1)]
+    non_zero = [g for g in gaps if g > 0]
+    if not non_zero:
+        return
+
+    median_gap = statistics.median(non_zero)
 
     if not (A1_GAP_MIN_MS <= median_gap <= A1_GAP_MAX_MS):
         raise HTTPException(
@@ -105,15 +99,11 @@ def _check_t_units(t_values: list[int]) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Helper: out-of-range clamping (spec §3.4 rule 8)
-# ---------------------------------------------------------------------------
-
 def _sanitise_sample(spo2: int, hr: int, flag: str) -> tuple[int, int, str]:
     """
-    Guard A9 / spec rule 8: if spo2 or hr are outside valid range, re-mark
-    the sample as invalid rather than crashing. The spec says: "the backend
-    re-marks that sample flag:'invalid' rather than rejecting the whole upload."
+    Guard A9 / spec rule 8: out-of-range spo2 or hr → re-mark as 'invalid'
+    rather than crashing or rejecting the upload.
+    Sentinel 0 values (from mock invalid rows) are caught here automatically.
     """
     if spo2 < 0 or spo2 > 100:
         flag = "invalid"
@@ -122,22 +112,15 @@ def _sanitise_sample(spo2: int, hr: int, flag: str) -> tuple[int, int, str]:
     return spo2, hr, flag
 
 
-# ---------------------------------------------------------------------------
-# Helper: upsert a stub night row (A5)
-# ---------------------------------------------------------------------------
-
 def _ensure_night_stub(session_id: int, conn) -> None:
     """
-    Guard A5: make sure a row exists in 'nights' for this session_id so that
-    foreign-key constraints on 'samples' are satisfied.
-    If the row doesn't exist yet, insert a placeholder with band='pending'.
+    Guard A5: create a placeholder nights row (band='pending') the first time
+    this session_id appears, so foreign-key constraints on samples are satisfied.
     """
-    row = conn.execute(
-        "SELECT session_id FROM nights WHERE session_id = ?", (session_id,)
+    exists = conn.execute(
+        "SELECT 1 FROM nights WHERE session_id = ?", (session_id,)
     ).fetchone()
-
-    if row is None:
-        today = date.today().isoformat()   # backend stamps the date (spec §5)
+    if exists is None:
         conn.execute(
             """
             INSERT INTO nights
@@ -145,7 +128,26 @@ def _ensure_night_stub(session_id: int, conn) -> None:
                  sample_count, valid_sample_count, band, insufficient)
             VALUES (?, ?, 0, 0, 0, 0, 'pending', 0)
             """,
-            (session_id, today)
+            (session_id, date.today().isoformat())
+        )
+
+
+def _check_session_not_finalized(session_id: int, conn) -> None:
+    """
+    Guard A6: reject a second /night upload for a session that already has
+    a real band (anything other than 'pending' or 'uploaded means nothing yet).
+    'uploaded' is our intermediate state set by /night — re-uploading it
+    counts as a finalized overwrite attempt.
+    """
+    row = conn.execute(
+        "SELECT band FROM nights WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    # Allow overwrite only if the session doesn't exist yet OR is still pending
+    # (live-stream stub only — no SD file uploaded yet).
+    if row is not None and row["band"] not in ("pending",):
+        raise HTTPException(
+            status_code=409,
+            detail=f"session {session_id} already finalized — cannot overwrite"
         )
 
 
@@ -156,25 +158,36 @@ def _ensure_night_stub(session_id: int, conn) -> None:
 @app.post("/reading")
 async def post_reading(sample: LiveSample):
     """
-    Accept a single live SpO2/HR sample from the device (or replay_live.py).
+    Accept a single SpO2/HR sample streamed in real time.
 
-    Guards applied:
-      A2  — flag value must be "ok" or "invalid"
-      A5  — create a stub night row if this is a new session
-      A1  — buffer t values; once we have enough, check median gap
+    Order of guards (rejection happens before any DB write):
+      1. A2 — flag value
+      2. A9 — out-of-range sanitisation
+      3. A1 — update t-buffer, check median gap (rejects before insert)
+      4. A5 — create stub night row if new session
+      5. DB INSERT
     """
-    # A2: validate flag
+    # Guard A2: flag value
     _validate_flag(sample.flag, context=f"t={sample.t}")
 
-    # Sanitise out-of-range values (spec rule 8)
+    # Guard A9: sanitise out-of-range values
     spo2, hr, flag = _sanitise_sample(sample.spo2, sample.hr, sample.flag)
 
+    # Guard A1: update buffer THEN check — so a bad sample is rejected before
+    # it ever touches the database.
+    buf = _live_t_buffer[sample.session_id]
+    buf.append(sample.t)
+    if len(buf) > A1_LIVE_BUFFER_SIZE:
+        buf.pop(0)   # drop oldest to keep the buffer bounded
+    if len(buf) >= A1_LIVE_BUFFER_SIZE:
+        # This raises HTTPException(400) if the median gap is wrong.
+        # The exception bubbles up before we reach the DB code below.
+        _check_t_units(buf)
+
+    # All guards passed — write to DB.
     conn = get_connection()
     try:
-        # A5: make sure the nights row exists before inserting a sample
-        _ensure_night_stub(sample.session_id, conn)
-
-        # Insert the sample into the database
+        _ensure_night_stub(sample.session_id, conn)   # A5
         conn.execute(
             "INSERT INTO samples (session_id, t, spo2, hr, flag) VALUES (?, ?, ?, ?, ?)",
             (sample.session_id, sample.t, spo2, hr, flag)
@@ -182,16 +195,6 @@ async def post_reading(sample: LiveSample):
         conn.commit()
     finally:
         conn.close()
-
-    # A1: update the in-memory t-buffer and check units
-    buf = _live_t_buffer[sample.session_id]
-    buf.append(sample.t)
-    # Keep only the last N values to avoid unbounded memory growth
-    if len(buf) > A1_LIVE_BUFFER_SIZE:
-        buf.pop(0)
-    # Only check once we have enough samples to be meaningful
-    if len(buf) >= A1_LIVE_BUFFER_SIZE:
-        _check_t_units(buf)
 
     return {"status": "ok"}
 
@@ -203,81 +206,27 @@ async def post_reading(sample: LiveSample):
 @app.post("/night")
 async def post_night(request: Request):
     """
-    Accept a complete night CSV uploaded in one batch (e.g. from replay or
-    from the ESP32 fast-playback mode).
+    Accept a complete night's data as a raw CSV body (A3).
+    The ESP32 streams its SD file byte-for-byte; no JSON wrapping on device.
 
-    The body is raw CSV text (Content-Type: text/csv), NOT a JSON array.
-    This matches how the ESP32 streams its SD file: byte-identical to the
-    file on disk, no re-encoding needed on the device.
+    session_id must be supplied as a query param: POST /night?session_id=N
+    (The JSON envelope in §3.2 is for tiny hand-made test payloads only.)
 
-    Guards applied:
-      A3  — body is CSV (no JSON parsing attempted)
-      A4  — first line must be exactly "t,spo2,hr,flag"
-      A6  — reject if this session was already finalized
-      A2  — flag values checked on every row
-      A1  — median gap check across all rows
+    Order of guards:
+      A3 — body is CSV
+      A4 — header line exact match
+      A2 — flag value per row
+      A9 — sanitise out-of-range per row
+      A1 — median gap check on the full batch
+      A6 — reject if session already finalized
+      A5 — create stub if needed
     """
-    # Read the raw bytes and decode to text
-    raw_bytes = await request.body()
-    try:
-        raw_text = raw_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=400,
-            detail="Could not decode CSV body as UTF-8"
-        )
-
-    lines = raw_text.strip().splitlines()
-    if not lines:
-        raise HTTPException(status_code=400, detail="Empty CSV body")
-
-    # A4: check the header line exactly
-    if lines[0].strip() != "t,spo2,hr,flag":
-        raise HTTPException(
-            status_code=400,
-            detail=f"bad CSV header — expected 't,spo2,hr,flag', got '{lines[0].strip()}'"
-        )
-
-    # Parse all data rows
-    reader = csv.DictReader(io.StringIO(raw_text))
-    rows: List[dict] = []
-    for i, row in enumerate(reader, start=2):   # start=2 because row 1 is the header
-        # A2: flag check per row
-        flag = row.get("flag", "").strip()
-        _validate_flag(flag, context=f"CSV row {i}")
-
-        # Parse integers — raise a clear error if a field isn't a number
-        try:
-            t    = int(row["t"])
-            spo2 = int(row["spo2"])
-            hr   = int(row["hr"])
-        except (ValueError, KeyError) as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"CSV row {i}: could not parse integers — {exc}"
-            )
-
-        # Sanitise out-of-range values (spec rule 8)
-        spo2, hr, flag = _sanitise_sample(spo2, hr, flag)
-        rows.append({"t": t, "spo2": spo2, "hr": hr, "flag": flag})
-
-    if not rows:
-        raise HTTPException(status_code=400, detail="CSV contained no data rows")
-
-    # A1: check t units across the whole batch
-    t_values = [r["t"] for r in rows]
-    _check_t_units(t_values)
-
-    # We need a session_id — read it from the first row's t context.
-    # The spec says session_id is in the POST body envelope (§3.2).
-    # For a CSV-body upload there is no JSON envelope, so we need to know the
-    # session_id. The ESP32 will PUT it in a query param or a custom header.
-    # For now, accept it as a query parameter ?session_id=N.
+    # --- Parse session_id from query string ---
     session_id_str = request.query_params.get("session_id")
     if not session_id_str:
         raise HTTPException(
             status_code=400,
-            detail="Missing query parameter: session_id (e.g. POST /night?session_id=1)"
+            detail="Missing query parameter: session_id  (e.g. POST /night?session_id=1)"
         )
     try:
         session_id = int(session_id_str)
@@ -289,47 +238,79 @@ async def post_night(request: Request):
             detail="session_id must be an integer ≥ 1"
         )
 
-    conn = get_connection()
+    # --- A3: read raw CSV body ---
+    raw_bytes = await request.body()
     try:
-        # A6: reject if this session was already finalized (band is not 'pending')
-        existing = conn.execute(
-            "SELECT band FROM nights WHERE session_id = ?", (session_id,)
-        ).fetchone()
+        raw_text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="CSV body must be UTF-8 encoded")
 
-        if existing is not None and existing["band"] != "pending":
+    lines = raw_text.strip().splitlines()
+    if not lines:
+        raise HTTPException(status_code=400, detail="Empty CSV body")
+
+    # --- A4: exact header check ---
+    if lines[0].strip() != "t,spo2,hr,flag":
+        raise HTTPException(
+            status_code=400,
+            detail=f"bad CSV header — expected 't,spo2,hr,flag', got '{lines[0].strip()}'"
+        )
+
+    # --- Parse rows; apply A2 and A9 per row ---
+    reader = csv.DictReader(io.StringIO(raw_text))
+    rows: List[dict] = []
+    for line_num, row in enumerate(reader, start=2):  # line 1 = header
+        flag = row.get("flag", "").strip()
+        _validate_flag(flag, context=f"CSV line {line_num}")   # A2
+
+        try:
+            t    = int(row["t"])
+            spo2 = int(row["spo2"])
+            hr   = int(row["hr"])
+        except (ValueError, KeyError) as exc:
             raise HTTPException(
-                status_code=409,
-                detail=f"session {session_id} already finalized — cannot overwrite"
+                status_code=400,
+                detail=f"CSV line {line_num}: integer parse error — {exc}"
             )
 
-        # A5: ensure stub exists (handles the case where no live samples were sent)
-        _ensure_night_stub(session_id, conn)
+        spo2, hr, flag = _sanitise_sample(spo2, hr, flag)  # A9
+        rows.append({"t": t, "spo2": spo2, "hr": hr, "flag": flag})
 
-        # If there were live samples already, delete them — the SD file is
-        # authoritative and replaces the partial live record (A5 / spec §8)
+    if not rows:
+        raise HTTPException(status_code=400, detail="CSV contained no data rows")
+
+    # --- A1: check t units on the full batch ---
+    _check_t_units([r["t"] for r in rows])
+
+    # --- DB writes (after all guards pass) ---
+    conn = get_connection()
+    try:
+        _check_session_not_finalized(session_id, conn)   # A6
+
+        _ensure_night_stub(session_id, conn)   # A5
+
+        # SD file is authoritative: replace any partial live-stream samples.
         conn.execute("DELETE FROM samples WHERE session_id = ?", (session_id,))
 
-        # Insert all rows in one transaction for speed
         conn.executemany(
             "INSERT INTO samples (session_id, t, spo2, hr, flag) VALUES (?, ?, ?, ?, ?)",
             [(session_id, r["t"], r["spo2"], r["hr"], r["flag"]) for r in rows]
         )
 
-        # Mark the night as finalized (band changes from 'pending' to 'uploaded').
-        # The real summary is computed lazily when GET /nights/{id}/summary is called.
-        today = date.today().isoformat()
+        # Mark night finalized with coarse stats; full summary computed lazily in B3.
+        duration_s = rows[-1]["t"] // 1000 if rows else 0
         conn.execute(
             """
             UPDATE nights
-            SET band         = 'uploaded',
-                received_date = ?,
-                sample_count  = ?,
-                duration_s    = ?,
+            SET band             = 'uploaded',
+                received_date    = ?,
+                sample_count     = ?,
+                duration_s       = ?,
                 valid_duration_s = 0,
                 valid_sample_count = 0
             WHERE session_id = ?
             """,
-            (today, len(rows), rows[-1]["t"] // 1000 if rows else 0, session_id)
+            (date.today().isoformat(), len(rows), duration_s, session_id)
         )
         conn.commit()
     finally:

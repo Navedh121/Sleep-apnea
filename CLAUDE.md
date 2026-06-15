@@ -89,6 +89,10 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
 - **mock_night.py + replay_live.py: BUILT and VERIFIED** — apnea→severe,
   normal→normal, short→insufficient; sample spacing ~1 Hz (passes guard A1); invalid
   rows carry sentinel 0 values (guard A9).
+- **Phase B2: DONE** — all integration guards A1–A10 enforced as hard rejections.
+  - A1 ordering fixed: live-stream check now runs BEFORE the DB insert (not after).
+  - `test_guards.py` added: 16/16 guard tests pass; re-runnable (cleans DB state).
+  - main.py bumped to v0.1.0-B2; guard helpers extracted into clear named functions.
 - **Phase B1: DONE** — FastAPI + SQLite skeleton.
   - `backend/config.py` — all §11 constants; `MIN_DURATION_S=240` (DEV); A10 print on import.
   - `backend/database.py` — `init_db()` creates both tables exactly from §10.
@@ -98,8 +102,7 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
   - `requirements.txt`, `.gitignore`, `.env.example`, `README.md` added.
   - **Verified:** live sample → 200; CSV upload 28800 rows → 200; duplicate → 409;
     bad flag → 400; wrong header → 400. DB contains correct rows.
-- **NEXT: Phase B2 — integration guards A1–A10 as hard rejections** (A1 live-stream
-  buffer already partially wired; B2 will harden all remaining guards and add tests).
+- **NEXT: Phase B3 — night summary + ODI computation + all read endpoints.**
 - **How to test the current state:**
   ```
   uvicorn backend.main:app --reload
