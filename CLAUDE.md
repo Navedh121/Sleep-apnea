@@ -89,6 +89,13 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
 - **mock_night.py + replay_live.py: BUILT and VERIFIED** — apnea→severe,
   normal→normal, short→insufficient; sample spacing ~1 Hz (passes guard A1); invalid
   rows carry sentinel 0 values (guard A9).
+- **Phase B3: DONE** — night summary, ODI, event detection, all read endpoints.
+  - `backend/summary.py`: `compute_baseline()` (A7), `detect_events()`, `odi_band()`,
+    `compute_summary()`. Duration gate inside compute_summary.
+  - GET /nights, GET /nights/{id}/summary, GET /nights/{id}/samples,
+    GET /nights/{id}/verdict, GET /live/active, GET /live/recent all wired.
+  - **Verified:** apnea→severe (ODI=49.8, 396 events), normal→normal,
+    short (239s) → insufficient; /live/active and /live/recent work.
 - **Phase B2: DONE** — all integration guards A1–A10 enforced as hard rejections.
   - A1 ordering fixed: live-stream check now runs BEFORE the DB insert (not after).
   - `test_guards.py` added: 16/16 guard tests pass; re-runnable (cleans DB state).
@@ -102,7 +109,7 @@ _Last updated: 15 June 2026 — update this block after every phase and commit i
   - `requirements.txt`, `.gitignore`, `.env.example`, `README.md` added.
   - **Verified:** live sample → 200; CSV upload 28800 rows → 200; duplicate → 409;
     bad flag → 400; wrong header → 400. DB contains correct rows.
-- **NEXT: Phase B3 — night summary + ODI computation + all read endpoints.**
+- **NEXT: Phase C — mock integration test (apnea/normal/short end-to-end + live replay).**
 - **How to test the current state:**
   ```
   uvicorn backend.main:app --reload

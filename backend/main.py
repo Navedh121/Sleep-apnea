@@ -1,5 +1,6 @@
 # main.py — FastAPI application entry point.
 #
+# Phase B3: summary computation + all read endpoints added.
 # Phase B2: all integration guards A1–A10 enforced as hard rejections.
 #
 # Guard summary (spec §A):
@@ -22,13 +23,20 @@ from collections import defaultdict
 from datetime import date
 from typing import List
 
-from fastapi import FastAPI, HTTPException, Request
+import json
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
 
 from backend.config import (
     A1_GAP_MIN_MS, A1_GAP_MAX_MS, A1_LIVE_BUFFER_SIZE
 )
 from backend.database import init_db, get_connection
-from backend.models import LiveSample
+from backend.models import (
+    LiveSample, NightRow, NightSummary, VerdictResponse,
+    SamplePoint, LiveActiveResponse,
+)
+from backend.summary import compute_summary
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -317,3 +325,217 @@ async def post_night(request: Request):
         conn.close()
 
     return {"status": "ok", "rows_inserted": len(rows)}
+
+
+# ---------------------------------------------------------------------------
+# GET /nights — list all uploaded nights (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/nights", response_model=List[NightRow])
+def get_nights():
+    """
+    Return every night that has been uploaded, newest first.
+    Shows: session_id, received_date, band, duration_s, insufficient.
+    Used by Page 1 (Logs) to populate the history table.
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT session_id, received_date, band, duration_s, insufficient
+            FROM   nights
+            WHERE  band != 'pending'
+            ORDER  BY session_id DESC
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [
+        {
+            "session_id":    r["session_id"],
+            "received_date": r["received_date"],
+            "band":          r["band"],
+            "duration_s":    r["duration_s"],
+            "insufficient":  bool(r["insufficient"]),
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# GET /nights/{id}/summary — full §5 summary (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/nights/{session_id}/summary", response_model=NightSummary)
+def get_summary(session_id: int):
+    """
+    Compute (or reuse) the full night summary for this session.
+
+    Summary is computed lazily on first call, then written back to the DB so
+    repeat calls are instant.  Pass ?recompute=1 to force a recalculation.
+    """
+    conn = get_connection()
+    try:
+        # Check the session exists
+        row = conn.execute(
+            "SELECT band FROM nights WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+
+        if row["band"] == "pending":
+            raise HTTPException(
+                status_code=409,
+                detail="session is still live — upload the full night first"
+            )
+
+        # compute_summary handles the gate, computation, and DB write-back
+        summary = compute_summary(session_id, conn)
+    finally:
+        conn.close()
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# GET /nights/{id}/samples — downsampled time series for plotting (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/nights/{session_id}/samples", response_model=List[SamplePoint])
+def get_samples(
+    session_id: int,
+    step: int = Query(default=1, ge=1, description="Return every Nth sample (1 = all)")
+):
+    """
+    Return the raw SpO2/HR samples for this session, suitable for graphing.
+
+    Use ?step=N to downsample (e.g. step=10 gives 10× fewer points, making
+    the chart snappier for an 8-hour night).
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM nights WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+
+        rows = conn.execute(
+            "SELECT t, spo2, hr, flag FROM samples WHERE session_id = ? ORDER BY t",
+            (session_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    # Apply the step: take every Nth row (index 0, step, 2*step, ...)
+    downsampled = rows[::step]
+    return [{"t": r["t"], "spo2": r["spo2"], "hr": r["hr"], "flag": r["flag"]}
+            for r in downsampled]
+
+
+# ---------------------------------------------------------------------------
+# GET /nights/{id}/verdict — band + RF second-opinion (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/nights/{session_id}/verdict", response_model=VerdictResponse)
+def get_verdict(session_id: int):
+    """
+    Return the severity verdict for this session.
+
+    The 'band' comes from the ODI calculation (computed in /summary).
+    'rf_index' and 'rf_confidence' come from the random forest (Phase E);
+    they are null until the model is trained and loaded.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT band, insufficient, rf_index, rf_confidence
+            FROM   nights
+            WHERE  session_id = ?
+            """,
+            (session_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+
+        band = row["band"]
+
+        # If the band is still 'uploaded' (summary not yet computed), compute it now
+        if band in ("uploaded", "pending"):
+            summary = compute_summary(session_id, conn)
+            band        = summary["band"]
+            insufficient = summary["insufficient"]
+        else:
+            insufficient = bool(row["insufficient"])
+
+    finally:
+        conn.close()
+
+    return {
+        "band":          band,
+        "insufficient":  insufficient,
+        "rf_index":      row["rf_index"],       # None until Phase E
+        "rf_confidence": row["rf_confidence"],  # None until Phase E
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /live/active — which session is currently streaming (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/live/active", response_model=LiveActiveResponse)
+def get_live_active():
+    """
+    Return the session_id of the most recent live session (band='pending'),
+    or null if nothing is currently streaming.
+    Used by Page 2 (Live) to know which session to poll.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT session_id FROM nights
+            WHERE  band = 'pending'
+            ORDER  BY session_id DESC
+            LIMIT  1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    return {"session_id": row["session_id"] if row else None}
+
+
+# ---------------------------------------------------------------------------
+# GET /live/recent — new samples since a given t (spec §2)
+# ---------------------------------------------------------------------------
+
+@app.get("/live/recent", response_model=List[SamplePoint])
+def get_live_recent(
+    session_id: int = Query(..., description="Which session to poll"),
+    since_t:    int = Query(default=0, description="Return only samples with t > this value"),
+):
+    """
+    Return all samples for session_id where t > since_t, ordered by t.
+
+    The Live page calls this every second, passing the last t it received as
+    since_t, so only new samples come back each time (efficient polling).
+    """
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT t, spo2, hr, flag
+            FROM   samples
+            WHERE  session_id = ? AND t > ?
+            ORDER  BY t
+            """,
+            (session_id, since_t)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return [{"t": r["t"], "spo2": r["spo2"], "hr": r["hr"], "flag": r["flag"]}
+            for r in rows]

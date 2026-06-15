@@ -114,8 +114,8 @@ python replay_live.py night_apnea.csv --speed 60 --session-id 4
 | A     | ✅ Done | Repo setup, mock data scripts |
 | B1    | ✅ Done | FastAPI skeleton, SQLite schema, ingestion endpoints |
 | B2    | ✅ Done | Integration guards A1–A10 as hard rejections |
-| B3    | ⏳ Next | Night summary, ODI, read endpoints |
-| C     | ⬜      | Mock integration test (apnea/normal/short end-to-end) |
+| B3    | ✅ Done | Night summary, ODI, read endpoints |
+| C     | ⏳ Next | Mock integration test (apnea/normal/short end-to-end) |
 | D     | ⬜      | 4-page HTML frontend + LLM chat |
 | E     | ⬜      | scikit-learn random forest, sensitivity/specificity |
 
