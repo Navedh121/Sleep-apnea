@@ -1,0 +1,17 @@
+# Core web framework and server
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Data validation (FastAPI uses this to check incoming JSON)
+pydantic>=2.7.0
+
+# Load secrets from a .env file
+python-dotenv>=1.0.0
+
+# Groq LLM client (used in Phase D)
+groq>=0.9.0
+
+# ML pipeline (used in Phase E)
+scikit-learn>=1.4.0
+joblib>=1.3.0
+numpy>=1.26.0

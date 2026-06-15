@@ -1,0 +1,22 @@
+# Secret keys — NEVER commit this
+.env
+
+# SQLite database file (contains real patient data)
+*.db
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# Trained ML model (large binary, regenerate with train_rf.py)
+model/*.pkl
+model/
+
+# Virtual environment (if you create one)
+venv/
+.venv/
+
+# Editor temp files
+.vscode/
+*.swp
