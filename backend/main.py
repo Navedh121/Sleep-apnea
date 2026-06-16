@@ -409,6 +409,38 @@ def get_nights():
 
 
 # ---------------------------------------------------------------------------
+# DELETE /nights/{id} — remove a night and all its samples (not in spec; additive)
+# ---------------------------------------------------------------------------
+
+@app.delete("/nights/{session_id}")
+def delete_night(session_id: int):
+    """
+    Permanently delete a night and every sample row that belongs to it.
+    Also clears the in-memory A1 t-buffer for that session so a new live
+    stream with the same session_id can start cleanly.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM nights WHERE session_id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"session {session_id} not found")
+
+        # Delete samples first (FK child), then the night row (FK parent)
+        conn.execute("DELETE FROM samples WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM nights  WHERE session_id = ?", (session_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Clear the live-stream buffer so a future session with the same ID starts fresh
+    _live_t_buffer.pop(session_id, None)
+
+    return {"status": "ok", "deleted_session_id": session_id}
+
+
+# ---------------------------------------------------------------------------
 # GET /nights/{id}/summary — full §5 summary (spec §2)
 # ---------------------------------------------------------------------------
 

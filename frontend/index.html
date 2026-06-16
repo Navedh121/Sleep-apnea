@@ -76,6 +76,8 @@
     .btn:hover { background: #2a4062; }
     .btn.secondary { background: #e8f0fa; color: #1a2c42; }
     .btn.secondary:hover { background: #d0e0f5; }
+    .btn.danger { background: #e74c3c; }
+    .btn.danger:hover { background: #c0392b; }
 
     /* ── empty / loading states ── */
     .msg { color: #777; font-size: 0.92rem; padding: 12px 0; }
@@ -180,6 +182,7 @@
             ${!n.insufficient
               ? `<a class="btn secondary" href="/app/chat.html?session_id=${n.session_id}">Chat</a>`
               : ''}
+            <button class="btn danger" onclick="deleteNight(${n.session_id}, this)">Delete</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -191,6 +194,38 @@
   }
 
   loadNights();
+
+  async function deleteNight(sessionId, btn) {
+    if (!confirm(`Delete session #${sessionId} and all its samples?\nThis cannot be undone.`)) return;
+
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    try {
+      const r = await fetch(`/nights/${sessionId}`, { method: 'DELETE' });
+      if (r.ok) {
+        // Remove the entire table row without reloading the page
+        btn.closest('tr').remove();
+        // If the table is now empty, show the empty-state message
+        const tbody = document.getElementById('tbody');
+        if (tbody.rows.length === 0) {
+          document.getElementById('tbl').style.display = 'none';
+          const msg = document.getElementById('msg');
+          msg.style.display = '';
+          msg.textContent = 'No nights recorded yet. Upload a CSV: POST /night?session_id=1';
+        }
+      } else {
+        const data = await r.json().catch(() => ({}));
+        alert(`Delete failed: ${data.detail || r.status}`);
+        btn.disabled = false;
+        btn.textContent = 'Delete';
+      }
+    } catch (e) {
+      alert(`Network error: ${e.message}`);
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+    }
+  }
 </script>
 
 </body>
