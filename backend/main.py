@@ -19,13 +19,13 @@
 
 import csv
 import io
-import statistics
-from collections import defaultdict
-from datetime import date
-from typing import List
-
 import json
 import os
+import statistics
+import subprocess
+import sys
+from collections import defaultdict
+from datetime import date
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
@@ -69,12 +69,114 @@ _live_t_buffer: dict[int, list[int]] = defaultdict(list)
 _RF_MODEL = None
 
 
+# ---------------------------------------------------------------------------
+# Startup seeding — seed 3 demo nights when the database is brand new
+# ---------------------------------------------------------------------------
+
+def _seed_demo_if_empty() -> None:
+    """
+    Seed three demo nights (apnea / normal / short) when the nights table
+    has no finalized rows.  Writes directly to SQLite — no HTTP needed, so
+    this is safe to call during server startup before any endpoint is live.
+
+    Uses sys.executable so the subprocess runs inside the same venv that
+    started the server, regardless of the system Python path.
+    """
+    conn = get_connection()
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM nights WHERE band != 'pending'"
+        ).fetchone()[0]
+        if count > 0:
+            print(f"Database already has {count} night(s) — skipping demo seed.")
+            return
+
+        print("Empty database — seeding 3 demo nights ...")
+
+        # Root of the project (one level above backend/)
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        mock_script = os.path.join(root, "mock_night.py")
+
+        demos = [
+            ("apnea",  1, ["--hours",   "8"]),
+            ("normal", 2, ["--hours",   "8"]),
+            ("short",  3, ["--minutes", "4"]),
+        ]
+
+        for mode, session_id, extra_args in demos:
+            csv_path = os.path.join(root, f"night_{mode}.csv")
+
+            # Generate the CSV file if it doesn't already exist
+            if not os.path.exists(csv_path):
+                result = subprocess.run(
+                    [sys.executable, mock_script, mode,
+                     "--out", csv_path, "--seed", "42"] + extra_args,
+                    cwd=root, capture_output=True, text=True
+                )
+                if result.returncode != 0:
+                    print(f"  WARNING: could not generate {csv_path}: {result.stderr[:300]}")
+                    continue
+
+            # Skip if this session already exists (partial previous seed)
+            if conn.execute(
+                "SELECT 1 FROM nights WHERE session_id = ?", (session_id,)
+            ).fetchone() is not None:
+                print(f"  Session {session_id} already exists — skipping")
+                continue
+
+            # Parse the CSV into row dicts (same A9 sanitisation as POST /night)
+            rows: List[dict] = []
+            with open(csv_path, newline="", encoding="utf-8") as f:
+                for row in csv.DictReader(f):
+                    flag = row["flag"].strip()
+                    t, spo2, hr = int(row["t"]), int(row["spo2"]), int(row["hr"])
+                    spo2, hr, flag = _sanitise_sample(spo2, hr, flag)   # A9
+                    rows.append({"t": t, "spo2": spo2, "hr": hr, "flag": flag})
+
+            if not rows:
+                print(f"  WARNING: {csv_path} is empty — skipping")
+                continue
+
+            # Insert directly into the DB (guards already satisfied by the
+            # mock generator; we check session existence above instead of A6)
+            _ensure_night_stub(session_id, conn)    # A5
+            conn.executemany(
+                "INSERT INTO samples (session_id, t, spo2, hr, flag) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [(session_id, r["t"], r["spo2"], r["hr"], r["flag"]) for r in rows]
+            )
+            duration_s = rows[-1]["t"] // 1000
+            conn.execute(
+                """
+                UPDATE nights
+                SET band='uploaded', received_date=?, sample_count=?,
+                    duration_s=?, valid_duration_s=0, valid_sample_count=0
+                WHERE session_id=?
+                """,
+                (date.today().isoformat(), len(rows), duration_s, session_id)
+            )
+            conn.commit()
+            print(f"  Seeded session {session_id} ({mode}, {len(rows)} rows)")
+
+        print("Demo seed complete.")
+
+    except Exception as exc:
+        # Never crash the server on a seeding failure — just log and move on
+        print(f"WARNING: demo seed failed ({exc}). The server will start without demo data.")
+    finally:
+        conn.close()
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     """Create tables on first run (safe to call every time)."""
     global _RF_MODEL
 
     init_db()
+
+    # Seed three example nights when the DB is brand new.
+    # Direct DB writes — safe before any endpoint is live.
+    _seed_demo_if_empty()
 
     # Try to load the trained RF model (Phase E).
     # The server works without it — verdict returns rf_index=null until trained.

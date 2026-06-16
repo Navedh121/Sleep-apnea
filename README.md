@@ -11,9 +11,15 @@ All results are estimated risk bands. Always consult a sleep specialist.
 **Double-click `run.bat`.**
 
 That's it. On first run it creates a virtual environment, installs dependencies,
-starts the server, seeds three demo nights into the database, and opens
-`http://localhost:8000` in your browser. On subsequent runs it skips setup and
-seeding and just starts the server.
+starts the server, and opens `http://localhost:8000` in your browser.
+On subsequent runs it skips setup and just starts the server.
+
+The server **automatically seeds three demo nights** (apnea / normal / short) the
+first time it starts with an empty database — whether you use `run.bat` or start
+it manually. No extra step required.
+
+The server listens on `0.0.0.0:8000` so your ESP32 and phone on the same WiFi
+can reach it at `http://<your-laptop-ip>:8000`.
 
 To stop the server, close the **SpO2 Server** terminal window that opens.
 
@@ -58,6 +64,8 @@ copy .env.example .env        # Windows
 
 # 4. Start the server
 uvicorn backend.main:app --reload
+# For ESP32/phone access on the same WiFi, add --host 0.0.0.0:
+# uvicorn backend.main:app --host 0.0.0.0 --reload
 ```
 
 Open `http://localhost:8000` in a browser.

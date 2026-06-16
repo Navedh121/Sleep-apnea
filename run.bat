@@ -36,7 +36,7 @@ if not exist .venv (
 :: ── Step 2: Start the server in a separate window ──────────────────────────
 echo [2/4] Starting server...
 start "SpO2 Server  (close this window to stop the server)" ^
-    cmd /k "call .venv\Scripts\activate.bat && echo. && echo  Server starting... && echo. && uvicorn backend.main:app --port 8000"
+    cmd /k "call .venv\Scripts\activate.bat && echo. && echo  Server starting... && echo. && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
 
 :: ── Step 3: Wait until the server accepts requests ─────────────────────────
 echo [3/4] Waiting for server to be ready...
