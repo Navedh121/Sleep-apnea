@@ -4,64 +4,81 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpO2 Monitor — Live</title>
-  <!-- Chart.js from CDN — no build step needed -->
+  <link rel="stylesheet" href="/app/theme.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #222; }
-
-    header {
-      background: #1a2c42; color: white; padding: 0 24px;
-      display: flex; align-items: center; justify-content: space-between; height: 56px;
-    }
-    header h1 { font-size: 1.1rem; font-weight: 600; }
-    header .sub { font-size: 0.72rem; color: #aac4e0; margin-left: 10px; }
-    nav a { color: #aac4e0; text-decoration: none; margin-left: 20px; font-size: 0.9rem; padding: 4px 0; }
-    nav a.active, nav a:hover { color: white; border-bottom: 2px solid #4a9eda; }
-
-    main { max-width: 960px; margin: 32px auto; padding: 0 16px; }
-    h2 { font-size: 1.3rem; margin-bottom: 8px; color: #1a2c42; }
-
-    .card { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 20px; }
-
-    /* status bar above chart */
+    /* ── live status bar ── */
     #status-bar {
-      display: flex; align-items: center; gap: 24px;
-      margin-bottom: 16px; flex-wrap: wrap;
-    }
-    .stat-label { font-size: 0.75rem; color: #777; text-transform: uppercase; }
-    .stat-val   { font-size: 1.5rem; font-weight: 700; }
-    #spo2-val   { color: #2980b9; }
-    #hr-val     { color: #c0392b; }
-    #session-badge {
-      margin-left: auto; background: #e8f4fb; color: #1a2c42;
-      font-size: 0.8rem; padding: 4px 10px; border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
     }
 
-    #idle-msg {
-      text-align: center; padding: 48px 0; color: #777; font-size: 0.95rem;
+    .live-stat .lbl {
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 2px;
     }
-    #idle-msg code { background: #f0f2f5; padding: 2px 6px; border-radius: 4px; font-size: 0.88rem; }
+
+    .live-stat .val {
+      font-size: 1.75rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    #spo2-val { color: var(--accent); }
+    #hr-val   { color: var(--text-muted); }
+    #count-val, #time-val { color: var(--text); }
+
+    #session-badge {
+      margin-left: auto;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+    }
+
+    /* ── idle card ── */
+    #idle-msg {
+      text-align: center;
+      padding: 48px 0;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    #idle-msg code {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+    }
 
     canvas { width: 100% !important; }
-
-    footer { text-align: center; font-size: 0.78rem; color: #999; margin-top: 40px; padding-bottom: 24px; }
   </style>
 </head>
 <body>
 
-<header>
-  <div style="display:flex;align-items:center">
-    <h1>SpO2 Sleep Monitor</h1>
-    <span class="sub">Screening tool — not a medical device</span>
+<header class="app-header">
+  <div class="app-brand">
+    <span class="app-brand-name">SpO2 Sleep Monitor</span>
+    <span class="app-brand-sub">Screening tool — not a medical device</span>
   </div>
-  <nav>
-    <a href="/app/index.html">History</a>
+  <nav class="app-nav">
+    <a href="/app/index.html">Nights</a>
     <a href="/app/live.html" class="active">Live</a>
+    <a href="/app/verdict.html">Verdict</a>
+    <a href="/app/chat.html">Chat</a>
   </nav>
 </header>
 
-<main>
+<main class="page-main">
   <h2>Live Recording</h2>
 
   <!-- Shown when nothing is streaming -->
@@ -69,74 +86,72 @@
     <div id="idle-msg">
       <p style="margin-bottom:12px">No active session detected.</p>
       <p>Stream a mock file to see the graph update in real time:</p>
-      <p style="margin-top:8px"><code>python replay_live.py night_apnea.csv --speed 60</code></p>
+      <p style="margin-top:10px"><code>python replay_live.py night_apnea.csv --speed 60</code></p>
     </div>
   </div>
 
   <!-- Shown once a live session is detected -->
   <div class="card" id="live-card" style="display:none">
     <div id="status-bar">
-      <div>
-        <div class="stat-label">SpO2</div>
-        <div class="stat-val" id="spo2-val">—</div>
+      <div class="live-stat">
+        <div class="lbl">SpO2</div>
+        <div class="val" id="spo2-val">—</div>
       </div>
-      <div>
-        <div class="stat-label">Heart Rate</div>
-        <div class="stat-val" id="hr-val">—</div>
+      <div class="live-stat">
+        <div class="lbl">Heart Rate</div>
+        <div class="val" id="hr-val">—</div>
       </div>
-      <div>
-        <div class="stat-label">Samples received</div>
-        <div class="stat-val" id="count-val">0</div>
+      <div class="live-stat">
+        <div class="lbl">Samples</div>
+        <div class="val" id="count-val">0</div>
       </div>
-      <div>
-        <div class="stat-label">Elapsed</div>
-        <div class="stat-val" id="time-val">0:00</div>
+      <div class="live-stat">
+        <div class="lbl">Elapsed</div>
+        <div class="val" id="time-val">0:00</div>
       </div>
       <div id="session-badge">Session #<span id="session-num">—</span></div>
     </div>
 
-    <!-- Chart.js canvas -->
     <canvas id="chart" height="300"></canvas>
   </div>
 </main>
 
-<footer>Screening estimate only — not for clinical use. Consult a sleep specialist.</footer>
+<footer class="app-footer">
+  Screening tool — not a diagnosis or treatment. Consult a sleep specialist.
+</footer>
 
 <script>
-  // ── constants ────────────────────────────────────────────────────────────
-  const POLL_MS     = 1000;   // how often to poll /live/recent (1 Hz)
-  const MAX_POINTS  = 600;    // max data points shown on chart (last 10 min at 1 Hz)
+  const POLL_MS    = 1000;
+  const MAX_POINTS = 600;
 
-  // ── state ────────────────────────────────────────────────────────────────
   let sessionId  = null;
-  let lastT      = 0;        // last t value we received (ms)
+  let lastT      = 0;
   let totalCount = 0;
   let chart      = null;
   let pollTimer  = null;
 
-  // ── build the Chart.js chart ─────────────────────────────────────────────
   function buildChart() {
     const ctx = document.getElementById('chart').getContext('2d');
     chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: [],       // time labels (MM:SS)
+        labels: [],
         datasets: [
           {
             label: 'SpO2 (%)',
             data: [],
-            borderColor: '#2980b9',
-            backgroundColor: 'rgba(41,128,185,.08)',
+            borderColor: '#2DA39A',           /* --accent */
+            backgroundColor: 'rgba(45,163,154,.07)',
             borderWidth: 2,
-            pointRadius: 0,   // no dots — the line is enough at 1 Hz
+            pointRadius: 0,
             tension: 0.3,
             yAxisID: 'ySpo2',
           },
           {
             label: 'Heart Rate (bpm)',
             data: [],
-            borderColor: '#c0392b',
-            backgroundColor: 'rgba(192,57,43,.06)',
+            borderColor: '#B0A99E',           /* warm muted grey */
+            backgroundColor: 'rgba(176,169,158,.05)',
             borderWidth: 1.5,
             pointRadius: 0,
             tension: 0.3,
@@ -145,48 +160,39 @@
         ],
       },
       options: {
-        animation: false,    // disable animation so the live update feels instant
+        animation: false,
         responsive: true,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'top' },
-          tooltip: {
-            callbacks: {
-              // Show the time as MM:SS in the tooltip
-              title: items => items[0].label,
-            },
+          legend: {
+            position: 'top',
+            labels: { font: { family: 'Inter, system-ui', size: 12 }, color: '#6E6A63' },
           },
         },
         scales: {
           x: {
-            ticks: {
-              maxTicksLimit: 10,
-              font: { size: 11 },
-            },
+            ticks: { maxTicksLimit: 10, font: { size: 11 }, color: '#6E6A63' },
+            grid:  { color: '#E7E5E0' },
           },
           ySpo2: {
-            type: 'linear',
-            position: 'left',
-            min: 70,
-            max: 100,
-            title: { display: true, text: 'SpO2 (%)' },
-            ticks: { font: { size: 11 } },
+            type: 'linear', position: 'left',
+            min: 70, max: 100,
+            title: { display: true, text: 'SpO2 (%)', font: { size: 11 }, color: '#6E6A63' },
+            ticks: { font: { size: 11 }, color: '#6E6A63' },
+            grid:  { color: '#E7E5E0' },
           },
           yHr: {
-            type: 'linear',
-            position: 'right',
-            min: 30,
-            max: 180,
-            title: { display: true, text: 'HR (bpm)' },
-            grid: { drawOnChartArea: false },  // no grid for the right axis
-            ticks: { font: { size: 11 } },
+            type: 'linear', position: 'right',
+            min: 30, max: 180,
+            title: { display: true, text: 'HR (bpm)', font: { size: 11 }, color: '#6E6A63' },
+            grid:  { drawOnChartArea: false },
+            ticks: { font: { size: 11 }, color: '#6E6A63' },
           },
         },
       },
     });
   }
 
-  // ── format elapsed ms as M:SS ─────────────────────────────────────────────
   function fmtTime(ms) {
     const totalSec = Math.floor(ms / 1000);
     const m = Math.floor(totalSec / 60);
@@ -194,14 +200,12 @@
     return `${m}:${String(s).padStart(2, '0')}`;
   }
 
-  // ── add new samples to the chart ─────────────────────────────────────────
   function addSamples(samples) {
     samples.forEach(s => {
       lastT = s.t;
       totalCount++;
 
       if (s.flag !== 'ok') {
-        // Invalid sample: push null so Chart.js draws a gap in the line
         chart.data.labels.push(fmtTime(s.t));
         chart.data.datasets[0].data.push(null);
         chart.data.datasets[1].data.push(null);
@@ -210,33 +214,28 @@
         chart.data.datasets[0].data.push(s.spo2);
         chart.data.datasets[1].data.push(s.hr);
 
-        // Update the live-reading numbers at the top
         document.getElementById('spo2-val').textContent = s.spo2 + '%';
         document.getElementById('hr-val').textContent   = s.hr + ' bpm';
       }
     });
 
-    // Keep the chart from growing forever — drop old points off the left
     while (chart.data.labels.length > MAX_POINTS) {
       chart.data.labels.shift();
       chart.data.datasets.forEach(ds => ds.data.shift());
     }
 
-    // Update counters
     document.getElementById('count-val').textContent = totalCount;
     document.getElementById('time-val').textContent  = fmtTime(lastT);
 
-    chart.update('none');  // 'none' = skip animation, just redraw
+    chart.update('none');
   }
 
-  // ── poll /live/recent for new samples ────────────────────────────────────
   async function poll() {
     try {
       const r = await fetch(`/live/recent?session_id=${sessionId}&since_t=${lastT}`);
       const samples = await r.json();
       if (samples.length > 0) addSamples(samples);
 
-      // Check if the session ended (no longer pending)
       const activeR = await fetch('/live/active');
       const active  = await activeR.json();
       if (active.session_id !== sessionId) {
@@ -248,7 +247,6 @@
     }
   }
 
-  // ── start live mode ───────────────────────────────────────────────────────
   function startLive(sid) {
     sessionId = sid;
     document.getElementById('idle-card').style.display = 'none';
@@ -256,28 +254,22 @@
     document.getElementById('session-num').textContent = sid;
     buildChart();
     pollTimer = setInterval(poll, POLL_MS);
-    poll();   // fetch immediately instead of waiting 1 second
+    poll();
   }
 
-  // ── check if a session is active on page load ─────────────────────────────
   async function checkActive() {
     try {
       const r      = await fetch('/live/active');
       const active = await r.json();
-      if (active.session_id !== null) {
-        startLive(active.session_id);
-      }
-      // else: leave the idle card visible
+      if (active.session_id !== null) startLive(active.session_id);
     } catch (e) {
       document.getElementById('idle-msg').innerHTML +=
-        `<p style="color:#e74c3c;margin-top:8px">Cannot reach server: ${e.message}</p>`;
+        `<p style="color:var(--chip-severe-text);margin-top:12px">Cannot reach server: ${e.message}</p>`;
     }
   }
 
-  // Poll for an active session every 3 seconds while idle, so the page
-  // automatically transitions when replay_live.py starts.
   async function waitForSession() {
-    const r      = await fetch('/live/active').catch(() => null);
+    const r = await fetch('/live/active').catch(() => null);
     if (!r) return;
     const active = await r.json();
     if (active.session_id !== null) {

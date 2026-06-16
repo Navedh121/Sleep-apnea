@@ -1,0 +1,271 @@
+/*
+ * theme.css — shared design tokens and base styles
+ * Conforms to DESIGN.md: friendly light health-app, soft neutrals, teal accent.
+ * Every page imports this file; colours live here and nowhere else.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* ── Design tokens ─────────────────────────────────────────────────────── */
+:root {
+  /* Neutrals */
+  --bg:         #F7F6F3;
+  --surface:    #FFFFFF;
+  --border:     #E7E5E0;
+  --text:       #1F2421;
+  --text-muted: #6E6A63;
+
+  /* Single brand accent */
+  --accent:       #2DA39A;
+  --accent-hover: #238079;
+  --accent-soft:  #E6F4F2;
+
+  /* Band severity chips — bg + text pairs */
+  --chip-normal-bg:   #E8F5EE;  --chip-normal-text:   #2E7D52;
+  --chip-mild-bg:     #FFF4E0;  --chip-mild-text:     #B5790E;
+  --chip-mod-bg:      #FDEBDD;  --chip-mod-text:      #C2611F;
+  --chip-severe-bg:   #FBE9E7;  --chip-severe-text:   #C0392B;
+  --chip-other-bg:    #EFEEEB;  --chip-other-text:    #6E6A63;
+
+  /* Shape */
+  --r-card: 16px;
+  --r-btn:  10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .06);
+}
+
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Focus ring ─────────────────────────────────────────────────────────── */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-brand { display: flex; align-items: baseline; gap: 8px; }
+
+.app-brand-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
+
+.app-brand-sub {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
+.app-nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-left: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  transition: color .15s, border-color .15s;
+}
+.app-nav a:hover  { color: var(--accent); }
+.app-nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* ── Page wrapper ───────────────────────────────────────────────────────── */
+.page-main {
+  max-width: 960px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+
+/* ── Card ───────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border-radius: var(--r-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+/* ── Headings ───────────────────────────────────────────────────────────── */
+.page-main h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+.page-main h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: var(--r-btn);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-primary                      { background: var(--accent);        color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-secondary                        { background: var(--accent-soft);    color: var(--accent); }
+.btn-secondary:hover:not(:disabled)   { background: #d4ebe8; }
+
+.btn-danger                       { background: var(--chip-severe-bg);  color: var(--chip-severe-text); }
+.btn-danger:hover:not(:disabled)  { background: #f0d2cf; }
+
+/* ── Band chips ─────────────────────────────────────────────────────────── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.chip-normal      { background: var(--chip-normal-bg);  color: var(--chip-normal-text); }
+.chip-mild        { background: var(--chip-mild-bg);    color: var(--chip-mild-text); }
+.chip-moderate    { background: var(--chip-mod-bg);     color: var(--chip-mod-text); }
+.chip-severe      { background: var(--chip-severe-bg);  color: var(--chip-severe-text); }
+.chip-insufficient{ background: var(--chip-other-bg);   color: var(--chip-other-text); }
+.chip-uploaded    { background: var(--chip-other-bg);   color: var(--chip-other-text); }
+.chip-pending     { background: var(--chip-other-bg);   color: var(--chip-other-text); }
+
+/* Large chip used as the hero on the Verdict page */
+.big-chip {
+  font-size: 1.15rem;
+  font-weight: 700;
+  padding: 10px 28px;
+  border-radius: 28px;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+}
+
+/* ── Stat grid ──────────────────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stat-box {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+.stat-box .lbl {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+}
+.stat-box .val {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+th {
+  text-align: left;
+  padding: 10px 12px;
+  background: var(--bg);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+td { padding: 10px 12px; border-top: 1px solid var(--border); }
+tr:hover td { background: #FAFAF8; }
+
+/* ── Back link ──────────────────────────────────────────────────────────── */
+.back-link {
+  display: inline-block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+.back-link:hover { color: var(--accent); }
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.app-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 40px;
+  padding-bottom: 28px;
+}
+
+/* ── Disclaimer box ─────────────────────────────────────────────────────── */
+.disclaimer {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 14px 18px;
+  border-radius: 0 10px 10px 0;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+/* ── RF / content placeholder ────────────────────────────────────────────── */
+.placeholder-box {
+  background: var(--bg);
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+.placeholder-box code {
+  background: var(--border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.84rem;
+}
+
+/* ── Muted inline message ────────────────────────────────────────────────── */
+.msg-muted { color: var(--text-muted); font-size: 0.9rem; }

@@ -3,115 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SpO2 Monitor — History</title>
+  <title>SpO2 Monitor — Nights</title>
+  <link rel="stylesheet" href="/app/theme.css">
   <style>
-    /* ── reset & base ── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #222; }
-
-    /* ── top header ── */
-    header {
-      background: #1a2c42;
-      color: white;
-      padding: 0 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      height: 56px;
-    }
-    header h1 { font-size: 1.1rem; font-weight: 600; }
-    header .sub { font-size: 0.72rem; color: #aac4e0; margin-left: 10px; }
-    nav a {
-      color: #aac4e0;
-      text-decoration: none;
-      margin-left: 20px;
-      font-size: 0.9rem;
-      padding: 4px 0;
-    }
-    nav a.active, nav a:hover { color: white; border-bottom: 2px solid #4a9eda; }
-
-    /* ── page body ── */
-    main { max-width: 900px; margin: 32px auto; padding: 0 16px; }
-    h2 { font-size: 1.3rem; margin-bottom: 16px; color: #1a2c42; }
-
-    /* ── card wrapper ── */
-    .card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.1);
-      padding: 24px;
-    }
-
-    /* ── nights table ── */
-    table { width: 100%; border-collapse: collapse; }
-    th { text-align: left; padding: 10px 12px; background: #f0f2f5;
-         font-size: 0.82rem; color: #555; text-transform: uppercase;
-         letter-spacing: .04em; }
-    td { padding: 12px; border-top: 1px solid #eee; font-size: 0.92rem; }
-    tr:hover td { background: #fafafa; }
-
-    /* ── band chip ── */
-    .chip {
-      display: inline-block;
-      padding: 3px 10px;
-      border-radius: 12px;
-      color: white;
-      font-size: 0.8rem;
-      font-weight: 600;
-      text-transform: capitalize;
-    }
-
-    /* ── buttons ── */
-    .btn {
-      display: inline-block;
-      padding: 5px 12px;
-      border-radius: 5px;
-      text-decoration: none;
-      font-size: 0.82rem;
-      font-weight: 600;
-      margin-right: 6px;
-      background: #1a2c42;
-      color: white;
-    }
-    .btn:hover { background: #2a4062; }
-    .btn.secondary { background: #e8f0fa; color: #1a2c42; }
-    .btn.secondary:hover { background: #d0e0f5; }
-    .btn.danger { background: #e74c3c; }
-    .btn.danger:hover { background: #c0392b; }
-
-    /* ── empty / loading states ── */
-    .msg { color: #777; font-size: 0.92rem; padding: 12px 0; }
-
-    /* ── disclaimer footer ── */
-    footer {
-      text-align: center;
-      font-size: 0.78rem;
-      color: #999;
-      margin-top: 40px;
-      padding-bottom: 24px;
-    }
+    /* ── empty / loading state ── */
+    #msg { padding: 12px 0; }
   </style>
 </head>
 <body>
 
-<header>
-  <div style="display:flex;align-items:center">
-    <h1>SpO2 Sleep Monitor</h1>
-    <span class="sub">Screening tool — not a medical device</span>
+<header class="app-header">
+  <div class="app-brand">
+    <span class="app-brand-name">SpO2 Sleep Monitor</span>
+    <span class="app-brand-sub">Screening tool — not a medical device</span>
   </div>
-  <nav>
-    <a href="/app/index.html" class="active">History</a>
+  <nav class="app-nav">
+    <a href="/app/index.html" class="active">Nights</a>
     <a href="/app/live.html">Live</a>
+    <a href="/app/verdict.html">Verdict</a>
+    <a href="/app/chat.html">Chat</a>
   </nav>
 </header>
 
-<main>
+<main class="page-main">
   <h2>Night History</h2>
 
   <div class="card">
-    <p id="msg" class="msg">Loading...</p>
+    <p id="msg" class="msg-muted">Loading…</p>
 
-    <!-- Table is hidden until data loads -->
     <table id="tbl" style="display:none">
       <thead>
         <tr>
@@ -127,24 +46,17 @@
   </div>
 </main>
 
-<footer>
-  This tool screens for elevated risk of sleep apnea. It does not diagnose.
-  All results are estimates — consult a sleep specialist.
+<footer class="app-footer">
+  Screening tool — not a diagnosis or treatment. Consult a sleep specialist.
 </footer>
 
 <script>
-  // Map a band string to a background colour for the chip
-  const BAND_COLOR = {
-    normal:      '#27ae60',
-    mild:        '#f39c12',
-    moderate:    '#e67e22',
-    severe:      '#e74c3c',
-    insufficient:'#95a5a6',
-    uploaded:    '#95a5a6',
-    pending:     '#95a5a6',
-  };
+  /* Map a band string to its CSS chip class */
+  function bandClass(band) {
+    const known = ['normal', 'mild', 'moderate', 'severe', 'insufficient'];
+    return known.includes(band) ? `chip-${band}` : 'chip-insufficient';
+  }
 
-  // Format seconds as "7h 59m" or "3m"
   function fmtDuration(s) {
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
@@ -153,8 +65,8 @@
   }
 
   async function loadNights() {
-    const msg  = document.getElementById('msg');
-    const tbl  = document.getElementById('tbl');
+    const msg   = document.getElementById('msg');
+    const tbl   = document.getElementById('tbl');
     const tbody = document.getElementById('tbody');
 
     try {
@@ -170,19 +82,18 @@
       tbl.style.display  = 'table';
 
       nights.forEach(n => {
-        const color = BAND_COLOR[n.band] || '#95a5a6';
-        const tr    = document.createElement('tr');
+        const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>#${n.session_id}</td>
           <td>${n.received_date}</td>
           <td>${fmtDuration(n.duration_s)}</td>
-          <td><span class="chip" style="background:${color}">${n.band}</span></td>
+          <td><span class="chip ${bandClass(n.band)}">${n.band}</span></td>
           <td>
-            <a class="btn secondary" href="/app/verdict.html?session_id=${n.session_id}">Verdict</a>
+            <a class="btn btn-secondary" href="/app/verdict.html?session_id=${n.session_id}">Verdict</a>
             ${!n.insufficient
-              ? `<a class="btn secondary" href="/app/chat.html?session_id=${n.session_id}">Chat</a>`
+              ? `<a class="btn btn-secondary" href="/app/chat.html?session_id=${n.session_id}">Chat</a>`
               : ''}
-            <button class="btn danger" onclick="deleteNight(${n.session_id}, this)">Delete</button>
+            <button class="btn btn-danger" onclick="deleteNight(${n.session_id}, this)">Delete</button>
           </td>
         `;
         tbody.appendChild(tr);
@@ -199,14 +110,12 @@
     if (!confirm(`Delete session #${sessionId} and all its samples?\nThis cannot be undone.`)) return;
 
     btn.disabled = true;
-    btn.textContent = '...';
+    btn.textContent = '…';
 
     try {
       const r = await fetch(`/nights/${sessionId}`, { method: 'DELETE' });
       if (r.ok) {
-        // Remove the entire table row without reloading the page
         btn.closest('tr').remove();
-        // If the table is now empty, show the empty-state message
         const tbody = document.getElementById('tbody');
         if (tbody.rows.length === 0) {
           document.getElementById('tbl').style.display = 'none';

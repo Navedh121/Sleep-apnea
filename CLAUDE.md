@@ -82,6 +82,19 @@ force-push, delete history, or change repo visibility.
 ## CURRENT STATE — RESUME HERE
 _Last updated: 16 June 2026 — update this block after every phase and commit it._
 
+- **Design: aligned to DESIGN.md** — visual-only restyle applied 16 June 2026.
+  - `frontend/theme.css` (NEW): single source of truth for all CSS tokens — colors,
+    typography (Inter via CDN), shape (card 16px radius, button 10px), shadows.
+  - All 4 pages import `theme.css`; no more inline colors or duplicate style blocks.
+  - Nav bar is now light (white surface + `--border` underline), not dark navy.
+  - Band chips use muted paired bg/text colors per DESIGN.md (never white-on-color).
+  - Buttons: primary = solid teal, secondary = soft teal tint, danger = muted red tint.
+  - Verdict page: insufficient shows a friendly message instead of a bare chip; added
+    plain-language band sentence; scale bar uses DESIGN.md text colors (not bright).
+  - Live page: SpO₂ line = `--accent` teal; HR line = warm muted grey.
+  - Chat page: user bubble = teal; assistant bubble = warm off-white; spinner dots = teal.
+  - Logic, endpoints, and data contract unchanged.
+
 - **Stage A (setup): DONE** — private GitHub repo created; folder holds the 3 starter
   files: `SpO2-Data-Contract-Spec.md` (v1.1), `mock_night.py`, `replay_live.py` (and
   this `CLAUDE.md`).

@@ -4,91 +4,63 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpO2 Monitor — Verdict</title>
+  <link rel="stylesheet" href="/app/theme.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f0f2f5; color: #222; }
-
-    header {
-      background: #1a2c42; color: white; padding: 0 24px;
-      display: flex; align-items: center; justify-content: space-between; height: 56px;
-    }
-    header h1 { font-size: 1.1rem; font-weight: 600; }
-    header .sub { font-size: 0.72rem; color: #aac4e0; margin-left: 10px; }
-    nav a { color: #aac4e0; text-decoration: none; margin-left: 20px; font-size: 0.9rem; padding: 4px 0; }
-    nav a:hover { color: white; border-bottom: 2px solid #4a9eda; }
-
-    main { max-width: 900px; margin: 32px auto; padding: 0 16px; }
-    h2 { font-size: 1.3rem; margin-bottom: 16px; color: #1a2c42; }
-    h3 { font-size: 1rem; margin-bottom: 12px; color: #333; }
-
-    .card { background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 24px; margin-bottom: 20px; }
-
-    /* ── band chip ── */
-    .big-chip {
-      display: inline-block; padding: 8px 22px; border-radius: 20px;
-      color: white; font-size: 1.1rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: .06em;
-    }
-
-    /* ── stats grid ── */
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-top: 16px; }
-    .stat { background: #f8f9fa; border-radius: 6px; padding: 14px 16px; }
-    .stat-label { font-size: 0.72rem; color: #777; text-transform: uppercase; margin-bottom: 4px; }
-    .stat-val   { font-size: 1.4rem; font-weight: 700; color: #1a2c42; }
-
-    /* ── severity scale ── */
+    /* ── severity scale bar ── */
     .scale-bar {
-      display: flex; border-radius: 6px; overflow: hidden;
-      height: 14px; margin: 10px 0 4px;
+      display: flex;
+      border-radius: 8px;
+      overflow: hidden;
+      height: 10px;
+      margin: 12px 0 6px;
     }
     .scale-seg { flex: 1; }
-    .scale-labels { display: flex; justify-content: space-between; font-size: 0.7rem; color: #777; }
-    .scale-marker { position: relative; }
+    .seg-normal   { background: #2E7D52; }
+    .seg-mild     { background: #B5790E; }
+    .seg-moderate { background: #C2611F; }
+    .seg-severe   { background: #C0392B; }
 
-    /* ── RF placeholder ── */
-    .placeholder {
-      background: #f0f2f5; border: 2px dashed #ccc; border-radius: 6px;
-      padding: 24px; text-align: center; color: #888; font-size: 0.9rem;
+    .scale-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.68rem;
+      color: var(--text-muted);
     }
 
-    /* ── hourly table ── */
-    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-    th { text-align: left; padding: 8px 10px; background: #f0f2f5;
-         font-size: 0.78rem; color: #555; text-transform: uppercase; }
-    td { padding: 8px 10px; border-top: 1px solid #eee; }
-
-    /* ── disclaimer ── */
-    .disclaimer {
-      border-left: 4px solid #f39c12; background: #fffbf0;
-      padding: 12px 16px; border-radius: 0 6px 6px 0;
-      font-size: 0.85rem; color: #555;
+    /* ── insufficient state ── */
+    .insufficient-msg {
+      padding: 24px 0 8px;
+      font-size: 1rem;
+      color: var(--text);
     }
-
-    .back-link { font-size: 0.85rem; color: #1a2c42; text-decoration: none; margin-bottom: 16px; display: inline-block; }
-    .back-link:hover { text-decoration: underline; }
-
-    footer { text-align: center; font-size: 0.78rem; color: #999; margin-top: 40px; padding-bottom: 24px; }
+    .insufficient-msg .note {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
   </style>
 </head>
 <body>
 
-<header>
-  <div style="display:flex;align-items:center">
-    <h1>SpO2 Sleep Monitor</h1>
-    <span class="sub">Screening tool — not a medical device</span>
+<header class="app-header">
+  <div class="app-brand">
+    <span class="app-brand-name">SpO2 Sleep Monitor</span>
+    <span class="app-brand-sub">Screening tool — not a medical device</span>
   </div>
-  <nav>
-    <a href="/app/index.html">History</a>
+  <nav class="app-nav">
+    <a href="/app/index.html">Nights</a>
     <a href="/app/live.html">Live</a>
+    <a href="/app/verdict.html" class="active">Verdict</a>
+    <a href="/app/chat.html">Chat</a>
   </nav>
 </header>
 
-<main>
-  <a class="back-link" href="/app/index.html">← Back to History</a>
+<main class="page-main">
+  <a class="back-link" href="/app/index.html">← Back to Nights</a>
   <h2 id="page-title">Verdict — Session #<span id="session-num">…</span></h2>
 
   <div id="error-msg" style="display:none" class="card">
-    <p style="color:#e74c3c" id="error-text">Could not load verdict.</p>
+    <p style="color:var(--chip-severe-text)" id="error-text">Could not load verdict.</p>
   </div>
 
   <div id="content" style="display:none">
@@ -96,47 +68,43 @@
     <!-- ── Screening band ── -->
     <div class="card">
       <h3>Screening Band (firmware ODI)</h3>
-      <div style="margin-bottom:16px">
-        <span class="big-chip" id="band-chip">—</span>
-      </div>
 
-      <!-- Colour scale with marker -->
+      <div id="band-display" style="margin-bottom:20px"></div>
+
+      <!-- Colour scale -->
       <div class="scale-bar">
-        <div class="scale-seg" style="background:#27ae60" title="Normal (ODI < 5)"></div>
-        <div class="scale-seg" style="background:#f39c12" title="Mild (5–15)"></div>
-        <div class="scale-seg" style="background:#e67e22" title="Moderate (15–30)"></div>
-        <div class="scale-seg" style="background:#e74c3c" title="Severe (≥30)"></div>
+        <div class="scale-seg seg-normal"   title="Normal (ODI < 5)"></div>
+        <div class="scale-seg seg-mild"     title="Mild (5–15)"></div>
+        <div class="scale-seg seg-moderate" title="Moderate (15–30)"></div>
+        <div class="scale-seg seg-severe"   title="Severe (≥ 30)"></div>
       </div>
       <div class="scale-labels">
-        <span>Normal (&lt;5)</span><span>Mild (5–15)</span>
-        <span>Moderate (15–30)</span><span>Severe (≥30)</span>
+        <span>Normal (&lt;5)</span>
+        <span>Mild (5–15)</span>
+        <span>Moderate (15–30)</span>
+        <span>Severe (≥30)</span>
       </div>
 
-      <!-- Summary stats -->
-      <div class="stats" id="stats-grid">
-        <!-- filled by JS -->
-      </div>
+      <div class="stats-grid" id="stats-grid"></div>
     </div>
 
     <!-- ── RF second opinion ── -->
     <div class="card">
       <h3>ML Second Opinion (Random Forest)</h3>
-      <!-- Phase E wires the real values; show placeholder until then -->
-      <div id="rf-placeholder" class="placeholder">
+      <div id="rf-placeholder" class="placeholder-box">
         The machine-learning model has not been trained yet.
         Run <code>python train_rf.py</code> then restart the server to enable this.
-        (Phase E)
       </div>
       <div id="rf-result" style="display:none">
-        <span class="big-chip" id="rf-chip">—</span>
-        <div class="stats" style="margin-top:14px">
-          <div class="stat">
-            <div class="stat-label">RF Index (events/h)</div>
-            <div class="stat-val" id="rf-index-val">—</div>
+        <span class="chip big-chip" id="rf-chip">—</span>
+        <div class="stats-grid" style="margin-top:16px">
+          <div class="stat-box">
+            <div class="lbl">RF Index (events/h)</div>
+            <div class="val" id="rf-index-val">—</div>
           </div>
-          <div class="stat">
-            <div class="stat-label">RF Confidence</div>
-            <div class="stat-val" id="rf-conf-val">—</div>
+          <div class="stat-box">
+            <div class="lbl">RF Confidence</div>
+            <div class="val" id="rf-conf-val">—</div>
           </div>
         </div>
       </div>
@@ -159,43 +127,48 @@
 
     <!-- ── Disclaimer ── -->
     <div class="disclaimer">
-      This is a <strong>screening estimate only</strong>. It is not a diagnosis.
+      This is a <strong>screening estimate only</strong> — not a diagnosis.
       Sleep apnea can only be confirmed by a qualified clinician using a
       polysomnography (PSG) test. Please consult a sleep specialist.
     </div>
 
-  </div><!-- /content -->
+  </div>
 </main>
 
-<footer>Screening estimate only — not for clinical use. Consult a sleep specialist.</footer>
+<footer class="app-footer">
+  Screening tool — not a diagnosis or treatment. Consult a sleep specialist.
+</footer>
 
 <script>
-  // ── helpers ──────────────────────────────────────────────────────────────
-  const BAND_COLOR = {
-    normal:      '#27ae60',
-    mild:        '#f39c12',
-    moderate:    '#e67e22',
-    severe:      '#e74c3c',
-    insufficient:'#95a5a6',
-  };
+  /* Map band name to CSS chip class */
+  function bandClass(b) {
+    const known = ['normal', 'mild', 'moderate', 'severe', 'insufficient'];
+    return known.includes(b) ? `chip-${b}` : 'chip-insufficient';
+  }
 
-  function chipHtml(band) {
-    const color = BAND_COLOR[band] || '#95a5a6';
-    return { color, label: band ? band.toUpperCase() : '—' };
+  /* Plain-language sentence for the band */
+  function bandSentence(band, insufficient) {
+    if (insufficient) return '';
+    const map = {
+      normal:   'Last night fell in the <strong>normal</strong> range — no significant desaturation detected.',
+      mild:     'Last night fell in the <strong>mild</strong> range — some desaturation events were detected.',
+      moderate: 'Last night fell in the <strong>moderate</strong> range — notable desaturation events were recorded.',
+      severe:   'Last night fell in the <strong>severe</strong> range — frequent desaturation events were recorded.',
+    };
+    return map[band] || '';
   }
 
   function fmtNum(v, dec = 1) {
     return v !== null && v !== undefined ? Number(v).toFixed(dec) : '—';
   }
 
-  // ── read ?session_id from the URL ────────────────────────────────────────
   const params    = new URLSearchParams(window.location.search);
   const sessionId = params.get('session_id');
 
   if (!sessionId) {
     document.getElementById('error-msg').style.display = 'block';
     document.getElementById('error-text').textContent =
-      'No session_id in URL. Go back to History and click Verdict on a row.';
+      'No session_id in URL. Go back to Nights and click Verdict on a row.';
   } else {
     document.getElementById('session-num').textContent = sessionId;
     loadVerdict(sessionId);
@@ -203,7 +176,6 @@
 
   async function loadVerdict(sid) {
     try {
-      // Fetch verdict + summary in parallel for speed
       const [vResp, sResp] = await Promise.all([
         fetch(`/nights/${sid}/verdict`),
         fetch(`/nights/${sid}/summary`),
@@ -215,7 +187,6 @@
       const s = sResp.ok ? await sResp.json() : null;
 
       render(v, s);
-
     } catch (e) {
       document.getElementById('error-msg').style.display = 'block';
       document.getElementById('error-text').textContent = e.message;
@@ -225,22 +196,32 @@
   function render(v, s) {
     document.getElementById('content').style.display = 'block';
 
-    // ── Screening band chip ───────────────────────────────────────────────
-    const { color, label } = chipHtml(v.band);
-    const chip = document.getElementById('band-chip');
-    chip.textContent       = label;
-    chip.style.background  = color;
+    /* ── Band display ── */
+    const bandDiv = document.getElementById('band-display');
 
-    // ── Stats grid ────────────────────────────────────────────────────────
+    if (v.insufficient) {
+      bandDiv.innerHTML = `
+        <div class="insufficient-msg">
+          <span class="chip chip-insufficient">Insufficient data</span>
+          <p class="note">The recording was too short to produce a result.
+          A full night (at least 4 hours of valid data) is needed.</p>
+        </div>`;
+    } else {
+      const sentence = bandSentence(v.band, v.insufficient);
+      bandDiv.innerHTML = `
+        <span class="chip big-chip ${bandClass(v.band)}" id="band-chip">${v.band || '—'}</span>
+        ${sentence ? `<p style="margin-top:12px;font-size:.9rem;color:var(--text)">${sentence}</p>` : ''}
+      `;
+    }
+
+    /* ── Stats grid ── */
     const grid = document.getElementById('stats-grid');
     if (s) {
-      // Format duration as Xh Ym
       const dur = s.valid_duration_s || 0;
       const h   = Math.floor(dur / 3600);
       const m   = Math.floor((dur % 3600) / 60);
       const durStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
 
-      // Compute avg nadir from event_list (array of {nadir_spo2, ...})
       let avgNadir = '—';
       if (s.event_list && s.event_list.length > 0) {
         const sum = s.event_list.reduce((acc, e) => acc + e.nadir_spo2, 0);
@@ -248,33 +229,32 @@
       }
 
       grid.innerHTML = `
-        <div class="stat">
-          <div class="stat-label">ODI (events/h)</div>
-          <div class="stat-val">${fmtNum(s.odi)}</div>
+        <div class="stat-box">
+          <div class="lbl">ODI (events/h)</div>
+          <div class="val">${fmtNum(s.odi)}</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">SpO2 Baseline</div>
-          <div class="stat-val">${fmtNum(s.spo2_baseline)}%</div>
+        <div class="stat-box">
+          <div class="lbl">SpO2 Baseline</div>
+          <div class="val">${fmtNum(s.spo2_baseline)}%</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">Desaturation Events</div>
-          <div class="stat-val">${s.events ?? '—'}</div>
+        <div class="stat-box">
+          <div class="lbl">Desat Events</div>
+          <div class="val">${s.events ?? '—'}</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">Avg Nadir SpO2</div>
-          <div class="stat-val">${avgNadir}</div>
+        <div class="stat-box">
+          <div class="lbl">Avg Nadir SpO2</div>
+          <div class="val">${avgNadir}</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">Valid Duration</div>
-          <div class="stat-val">${durStr}</div>
+        <div class="stat-box">
+          <div class="lbl">Valid Duration</div>
+          <div class="val">${durStr}</div>
         </div>
-        <div class="stat">
-          <div class="stat-label">SpO2 Mean</div>
-          <div class="stat-val">${fmtNum(s.spo2_mean)}%</div>
+        <div class="stat-box">
+          <div class="lbl">SpO2 Mean</div>
+          <div class="val">${fmtNum(s.spo2_mean)}%</div>
         </div>
       `;
 
-      // ── Per-hour table ────────────────────────────────────────────────
       if (s.hourly && s.hourly.length > 0) {
         document.getElementById('hourly-card').style.display = 'block';
         const tbody = document.getElementById('hourly-body');
@@ -290,31 +270,28 @@
       }
     }
 
-    // ── RF second opinion ─────────────────────────────────────────────────
-    // If rf_index is null, Phase E hasn't run yet → show placeholder
+    /* ── RF second opinion ── */
     if (v.rf_index !== null && v.rf_index !== undefined) {
       document.getElementById('rf-placeholder').style.display = 'none';
       document.getElementById('rf-result').style.display      = 'block';
 
-      // Compute the RF band from rf_index using the §5 cutoffs.
-      // rf_index is an independent estimate and may differ from v.band (the ODI band).
       function rfBandFromIndex(idx) {
         if (idx < 5)  return 'normal';
         if (idx < 15) return 'mild';
         if (idx < 30) return 'moderate';
         return 'severe';
       }
-      const { color: rc, label: rl } = chipHtml(rfBandFromIndex(v.rf_index));
+
+      const rfBand = rfBandFromIndex(v.rf_index);
       const rfChip = document.getElementById('rf-chip');
-      rfChip.textContent      = rl;
-      rfChip.style.background = rc;
+      rfChip.className = `chip big-chip ${bandClass(rfBand)}`;
+      rfChip.textContent = rfBand;
 
       document.getElementById('rf-index-val').textContent =
         fmtNum(v.rf_index, 2);
       document.getElementById('rf-conf-val').textContent =
         v.rf_confidence !== null ? (v.rf_confidence * 100).toFixed(0) + '%' : '—';
     }
-    // else: placeholder stays visible
   }
 </script>
 
